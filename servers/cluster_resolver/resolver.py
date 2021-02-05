@@ -4,7 +4,7 @@ from typing import List
 from json import loads, dumps
 from select import epoll, EPOLLIN, EPOLLHUP
 
-from rush.proto.msgproto import sendmsg, recvmsg
+from proto.msgproto import sendmsg, recvmsg
 
 
 REGISTRY_DB = 'clusters-registry.sqlite3'
