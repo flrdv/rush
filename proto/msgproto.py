@@ -13,15 +13,15 @@ def sendmsg(sock: socket.socket, data: bytes):
 
 
 def recvmsg(sock: socket.socket):
-    encoded_msglen = b''
+    encoded_msg_len = b''
 
-    while len(encoded_msglen) < FUTURE_MSG_LEN_BYTES:
-        encoded_msglen += sock.recv(FUTURE_MSG_LEN_BYTES - len(encoded_msglen))
+    while len(encoded_msg_len) < FUTURE_MSG_LEN_BYTES:
+        encoded_msg_len += sock.recv(FUTURE_MSG_LEN_BYTES - len(encoded_msg_len))
 
-    msglen, = unpack('>I', encoded_msglen)
+    msg_len, = unpack('>I', encoded_msg_len)
     msg = b''
 
-    while len(msg) < msglen:
+    while len(msg) < msg_len:
         msg += sock.recv(READ_CHUNK_SIZE)
 
     return msg
