@@ -18,7 +18,7 @@ def recvmsg(sock: socket.socket):
     while len(encoded_msglen) < FUTURE_MSG_LEN_BYTES:
         encoded_msglen += sock.recv(FUTURE_MSG_LEN_BYTES - len(encoded_msglen))
 
-    msglen = sum(unpack('>I', encoded_msglen))
+    msglen, = unpack('>I', encoded_msglen)
     msg = b''
 
     while len(msg) < msglen:
