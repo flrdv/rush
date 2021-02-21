@@ -1,4 +1,4 @@
-import servers.cluster_resolver.resolver
+import servers.resolver.resolver
 from cli_utils import run_as_daemon
 
 
