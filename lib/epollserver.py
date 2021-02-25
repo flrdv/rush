@@ -50,7 +50,6 @@ RESPONSE = 3
 
 class EpollServer:
     def __init__(self, addr, maxconns=0):
-        self.epoll = select.epoll()
         self.server_sock = socket()
         self.handlers = {}  # epoll event: callable
         self.default_epoll_signals_mapping = {
@@ -79,11 +78,12 @@ class EpollServer:
             return server_thread
 
         self._running = True
-        self.epoll.register(self.server_sock.fileno(), select.EPOLLIN)
+        epoll = select.epoll()
+        epoll.register(self.server_sock.fileno())
 
         # _running is also a flag. Server will stop after _running will be set to False
         while self._running:
-            events = self.epoll.poll(1)
+            events = epoll.poll(1)
 
             for fileno, event in events:
                 event_type = self.get_event_type(fileno, event)
@@ -102,9 +102,9 @@ class EpollServer:
                 if event_type == CONNECT:
                     conn = handler(CONNECT, self.server_sock)
                     self.conns[fileno] = conn
-                    self.epoll.register(conn.fileno(), select.EPOLLIN)
+                    epoll.register(conn.fileno())
                 elif event_type == DISCONNECT:
-                    self.epoll.unregister(fileno)
+                    epoll.unregister(fileno)
                     conn = self.conns.pop(fileno)
                     handler(DISCONNECT, conn)
                 else:
