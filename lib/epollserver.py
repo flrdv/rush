@@ -79,6 +79,7 @@ class EpollServer:
             return server_thread
 
         self._running = True
+        self.epoll.register(self.server_sock)
 
         # _running is also a flag. Server will stop after _running will be set to False
         while self._running:
