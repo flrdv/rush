@@ -60,6 +60,7 @@ class EpollServer:
 
         self.server_sock.bind(addr)
         self.server_sock.listen(maxconns)
+        self.server_sock.setblocking(False)
 
         self._running = False
         self.conns = {}
@@ -101,6 +102,7 @@ class EpollServer:
 
                 if event_type == CONNECT:
                     conn = handler(CONNECT, self.server_sock)
+                    conn.setblocking(False)
                     self.conns[fileno] = conn
                     epoll.register(conn.fileno())
                 elif event_type == DISCONNECT:
