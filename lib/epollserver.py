@@ -103,8 +103,9 @@ class EpollServer:
                 if event_type == CONNECT:
                     conn = handler(CONNECT, self.server_sock)
                     conn.setblocking(False)
-                    self.conns[fileno] = conn
-                    self.epoll.register(conn.fileno())
+                    conn_fileno = conn.fileno()
+                    self.conns[conn_fileno] = conn
+                    self.epoll.register(conn_fileno)
                 elif event_type == DISCONNECT:
                     self.epoll.unregister(fileno)
                     conn = self.conns.pop(fileno)
