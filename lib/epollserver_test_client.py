@@ -3,9 +3,11 @@ import socket
 
 try:
     sock = socket.socket()
-    sock.connect(('localhost', 8801))
+    sock.connect(('192.168.0.102', 8801))
+    print('connected!')
     sock.send(b'hello!')
-    print(sock.recv(10))
+    print('sent!')
+    print('received:', sock.recv(10))
     sock.close()
 except Exception as exc:
     print('an error occurred:', exc)
