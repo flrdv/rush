@@ -116,10 +116,11 @@ class EpollServer:
         if fileno == self.server_sock.fileno():
             return CONNECT
 
-        if event not in self.default_epoll_signals_mapping:
-            raise NotImplementedError('unavailable epoll signal: ' + str(event))
+        for epoll_signal in self.default_epoll_signals_mapping:
+            if event & epoll_signal:
+                return self.default_epoll_signals_mapping[epoll_signal]
 
-        return self.default_epoll_signals_mapping[event]
+        raise NotImplementedError('unavailable epoll signal: ' + str(event))
 
     def handler(self, on_event=all):
         def decorator(func):
