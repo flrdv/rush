@@ -75,7 +75,7 @@ class EpollServer:
             return server_thread
 
         self._running = True
-        self.epoll.register(self.server_sock.fileno())
+        self.epoll.register(self.server_sock.fileno(), select.EPOLLIN)
 
         # _running is also a flag. Server will stop after _running will be set to False
         while self._running:
@@ -100,7 +100,7 @@ class EpollServer:
                     conn.setblocking(False)
                     conn_fileno = conn.fileno()
                     self.conns[conn_fileno] = conn
-                    self.epoll.register(conn_fileno)
+                    self.epoll.register(conn_fileno, select.EPOLLIN)
                 elif event_type == DISCONNECT:
                     self.epoll.unregister(fileno)
                     conn = self.conns.pop(fileno)
