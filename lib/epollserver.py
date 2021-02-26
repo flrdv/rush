@@ -54,9 +54,9 @@ class EpollServer:
         self.epoll = select.epoll()
         self.handlers = {}  # epoll event: callable
         self.default_epoll_signals_mapping = {
+            select.EPOLLHUP: DISCONNECT,
             select.EPOLLIN: RECEIVE,
             select.EPOLLOUT: RESPONSE,
-            select.EPOLLHUP: DISCONNECT
         }
 
         self.server_sock.bind(addr)
