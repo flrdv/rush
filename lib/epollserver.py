@@ -1,6 +1,6 @@
 import select
-from socket import socket
 from threading import Thread
+from socket import socket, MSG_PEEK
 
 
 """
@@ -53,11 +53,6 @@ class EpollServer:
         self.server_sock = socket()
         self.epoll = select.epoll()
         self.handlers = {}  # epoll event: callable
-        self.default_epoll_signals_mapping = {
-            select.EPOLLHUP: DISCONNECT,
-            select.EPOLLIN: RECEIVE,
-            select.EPOLLOUT: RESPONSE,
-        }
 
         self.server_sock.bind(addr)
         self.server_sock.listen(maxconns)
@@ -117,6 +112,9 @@ class EpollServer:
         if fileno == self.server_sock.fileno():
             return CONNECT
         elif event & select.EPOLLIN:
+            if not self.conns[fileno].recv(1, MSG_PEEK):
+                return DISCONNECT
+
             return RECEIVE
         elif event & select.EPOLLOUT:
             return RESPONSE
@@ -124,12 +122,6 @@ class EpollServer:
             return DISCONNECT
         else:
             raise NotImplementedError('unavailable epoll signal: ' + str(event))
-
-        # for epoll_signal in self.default_epoll_signals_mapping:
-        #     if event & epoll_signal:
-        #         return self.default_epoll_signals_mapping[epoll_signal]
-        #
-        # raise NotImplementedError('unavailable epoll signal: ' + str(event))
 
     def handler(self, on_event=all):
         def decorator(func):
