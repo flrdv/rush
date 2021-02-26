@@ -1,19 +1,39 @@
-import socket
 import sqlite3
-from typing import List
 from json import loads, dumps
-from select import epoll, EPOLLIN, EPOLLHUP
 
-from lib.msgproto import sendmsg, recvmsg
+import lib.epollserver
+from lib.msgproto import recvmsg, sendmsg
 
 
-REGISTRY_DB = 'clusters-registry.sqlite3'
-DEFAULT_ADDR = ('localhost', 11100)
-PACKETS_CHUNK = 4096
+REGISTRY_DB = 'servers/resolver/registry.sqlite3'
 WRITE_DATA = b'\x00'
 READ_DATA = b'\x01'
+CLUSTER = b'\x00'
+MAINSERVER = b'\x01'
 RESPONSE_SUCC = b'\x02'
 RESPONSE_FAIL = b'\x03'
+
+
+"""
+requesting resolver be like:
+    1 byte - type of request (write/read data)
+    1 byte - write/read data for which node (cluster/mainserver)
+    * bytes - data
+"""
+
+
+def init_registry():
+    queries = (
+        'CREATE TABLE IF NOT EXISTS clusters (name string, ip string, port integer)',
+        'CREATE TABLE IF NOT EXISTS mainservers (name string, ip string, port integer)'
+    )
+
+    with sqlite3.connect(REGISTRY_DB) as conn:
+        cursor = conn.cursor()
+
+        for query in queries:
+            cursor.execute(query)
+            conn.commit()
 
 
 def add_cluster_addr(cluster_name, ip, port):
@@ -28,72 +48,86 @@ def get_cluster_addr(cluster_name):
         cursor = conn.cursor()
         cursor.execute('SELECT ip, port FROM clusters WHERE name=?', (cluster_name,))
 
-        return cursor.fetchone()
+        return cursor.fetchone() or (None, None)
+
+
+def add_mainserver_addr(mainserver_pseudo, ip, port):
+    with sqlite3.connect(REGISTRY_DB) as conn:
+        cursor = conn.cursor()
+        cursor.execute('INSERT INTO mainservers VALUES (?, ?, ?)', (mainserver_pseudo, ip, port))
+        conn.commit()
+
+
+def get_mainserver_addr(mainserver_pseudo):
+    with sqlite3.connect(REGISTRY_DB) as conn:
+        cursor = conn.cursor()
+        cursor.execute('SELECT ip, port FROM mainservers WHERE name=?', (mainserver_pseudo,))
+
+        return cursor.fetchone() or (None, None)
+
+
+def conn_handler(_, server_socket):
+    conn, addr = server_socket.accept()
+    ip, port = addr
+    print(f'[RESOLVER] Connected: {ip}:{port}')
+
+    return conn
+
+
+def request_handler(_, conn):
+    packet = recvmsg(conn)
+
+    if len(packet) < 3:
+        return sendmsg(conn, RESPONSE_FAIL + b'bad-request')
+
+    request_type, request_to = packet[:2]
+    body = packet[2:]
+
+    if request_type == WRITE_DATA:
+        name, ip, port = loads(body)
+
+        if request_to == CLUSTER:
+            add_cluster_addr(name, ip, port)
+            print(f'[RESOLVER] Added cluster "{name}" with address {ip}:{port}')
+        elif request_to == MAINSERVER:
+            add_mainserver_addr(name, ip, port)
+            print(f'[RESOLVER] Added main server "{name}" with address {ip}:{port}')
+    elif request_type == READ_DATA:
+        if request_to == CLUSTER:
+            print(f'[RESOLVER] Getting address for cluster "{body}"...', end=' ')
+            method = get_cluster_addr
+        elif request_to == MAINSERVER:
+            print(f'[RESOLVER] Getting address for main server "{body}"...', end=' ')
+            method = get_mainserver_addr
+        else:
+            return sendmsg(conn, RESPONSE_FAIL + b'bad-request-to')
+
+        ip, port = method(body)
+
+        if ip is None:
+            print('fail (not found)')
+            return sendmsg(conn, RESPONSE_FAIL + b'not-found')
+
+        print(f'ok ({ip}:{port})')
+
+        encoded_json = dumps([ip, port]).encode()
+        sendmsg(conn, RESPONSE_SUCC + encoded_json)
+
+
+def disconnect_handler(_, conn):
+    ip, port = conn.getpeername()
+    print(f'[RESOLVER] Disconnected: {ip}:{port}')
 
 
 class Resolver:
-    def __init__(self, addr=DEFAULT_ADDR, maxconns=0):
-        self.sock = socket.socket()
-        self.sock.bind(addr)
-        self.sock.listen(maxconns)
+    def __init__(self, addr=('localhost', 11100), maxconns=0):
+        self.epoll_server = lib.epollserver.EpollServer(addr, maxconns=maxconns)
+        self.epoll_server.add_handler(conn_handler, lib.epollserver.CONNECT)
+        self.epoll_server.add_handler(request_handler, lib.epollserver.RECEIVE)
+        self.epoll_server.add_handler(disconnect_handler, lib.epollserver.DISCONNECT)
 
-    def run_blocking_handler(self):
-        poll = epoll()
-        poll.register(self.sock.fileno(), EPOLLIN)
-
-        try:
-            conns = {}
-            requests = {}
-
-            while True:
-                events = poll.poll(1)
-
-                for fileno, event in events:
-                    if fileno == self.sock.fileno():
-                        conn, addr = self.sock.accept()
-                        conn.setblocking(False)
-                        conn_fileno = conn.fileno()
-                        poll.register(conn_fileno, EPOLLIN)
-                        conns[conn_fileno] = conn
-                        requests[conn_fileno] = b''
-                    elif event == EPOLLIN:
-                        conn = conns[fileno]
-                        full_packet = recvmsg(conn)
-
-                        if len(full_packet) < 2:
-                            sendmsg(conn, RESPONSE_FAIL + b'bad-request')
-                            continue
-
-                        decoded_full_packet = full_packet[1:].decode()
-
-                        if full_packet.startswith(WRITE_DATA):
-                            jsonified: List[str, str, int] = loads(decoded_full_packet)
-                            add_cluster_addr(*jsonified)
-
-                            print('[RESOLVER] Added cluster "{}" with addr {}:{}'.format(*jsonified))
-                        elif full_packet.startswith(READ_DATA):
-                            ip, port = get_cluster_addr(decoded_full_packet)
-                            decoded_jsonified = dumps([ip, port]).encode()
-                            sendmsg(conn, RESPONSE_SUCC + decoded_jsonified)
-
-                            print(f'[RESOLVER] Getting cluster "{decoded_full_packet}" (cluster\'s addr is '
-                                  f'{ip}:{port})')
-                        else:
-                            sendmsg(conn, RESPONSE_FAIL + b'bad-request-type')
-                    elif event == EPOLLHUP:
-                        poll.unregister(fileno)
-                        conn = conns.pop(fileno)
-                        conn.close()
-                        requests.pop(fileno)
-
-                        ip, port = conn.getpeername()
-                        print('[RESOLVER] Disconnected: ', ip, ':', port, sep='')
-        finally:
-            poll.unregister(self.sock.fileno())
-            poll.close()
-            self.sock.close()
+    def start(self, threaded=False):
+        self.epoll_server.start(threaded=threaded)
 
 
-if __name__ == '__main__':
-    resolver = Resolver()
-    resolver.run_blocking_handler()
+init_registry()
