@@ -116,12 +116,20 @@ class EpollServer:
     def get_event_type(self, fileno, event):
         if fileno == self.server_sock.fileno():
             return CONNECT
+        elif event & select.EPOLLIN:
+            return RECEIVE
+        elif event & select.EPOLLOUT:
+            return RESPONSE
+        elif event & select.EPOLLHUP:
+            return DISCONNECT
+        else:
+            raise NotImplementedError('unavailable epoll signal: ' + str(event))
 
-        for epoll_signal in self.default_epoll_signals_mapping:
-            if event & epoll_signal:
-                return self.default_epoll_signals_mapping[epoll_signal]
-
-        raise NotImplementedError('unavailable epoll signal: ' + str(event))
+        # for epoll_signal in self.default_epoll_signals_mapping:
+        #     if event & epoll_signal:
+        #         return self.default_epoll_signals_mapping[epoll_signal]
+        #
+        # raise NotImplementedError('unavailable epoll signal: ' + str(event))
 
     def handler(self, on_event=all):
         def decorator(func):
