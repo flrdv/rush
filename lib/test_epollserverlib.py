@@ -1,5 +1,9 @@
 import epollserver
 
+"""
+this file is a good example (or even demo) of the work of the epollserver lib
+"""
+
 epoll_server = epollserver.EpollServer(('localhost', 8801))
 
 
