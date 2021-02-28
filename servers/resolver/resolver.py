@@ -76,8 +76,10 @@ def conn_handler(_, server_socket):
 
 def request_handler(_, conn):
     packet = recvmsg(conn)
+    ip, port = conn.getpeername()
 
     if len(packet) < 3:
+        print(f'[RESOLVER] Received too short packet from {ip}:{port}: {packet}')
         return sendmsg(conn, RESPONSE_FAIL + b'bad-request')
 
     request_type, request_to = packet[:2]
@@ -100,6 +102,7 @@ def request_handler(_, conn):
             print(f'[RESOLVER] Getting address for main server "{body}"...', end=' ')
             method = get_mainserver_addr
         else:
+            print(f'[RESOLVER] Received unknown REQUEST_TO code from {ip}:{port}: {request_type}')
             return sendmsg(conn, RESPONSE_FAIL + b'bad-request-to')
 
         ip, port = method(body)
