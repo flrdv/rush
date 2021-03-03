@@ -6,12 +6,12 @@ from lib.msgproto import recvmsg, sendmsg
 
 
 REGISTRY_DB = 'servers/resolver/registry.sqlite3'
-WRITE_DATA = b'\x00'
-READ_DATA = b'\x01'
-CLUSTER = b'\x00'
-MAINSERVER = b'\x01'
-RESPONSE_SUCC = b'\x02'
-RESPONSE_FAIL = b'\x03'
+WRITE_DATA = 0
+READ_DATA = 1
+CLUSTER = 0
+MAINSERVER = 1
+RESPONSE_SUCC = 2
+RESPONSE_FAIL = 3
 
 
 """
