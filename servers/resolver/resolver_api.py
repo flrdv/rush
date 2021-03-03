@@ -8,8 +8,8 @@ WRITE = b'\x00'
 READ = b'\x01'
 CLUSTER = b'\x00'
 MAINSERVER = b'\x01'
-SUCC = b'\x02'
-FAIL = b'\x03'
+SUCC = 2    # after receiving bytes automatically being
+FAIL = 3    # converted to integer
 
 
 class ResolverApi:
