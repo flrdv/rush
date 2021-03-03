@@ -8,6 +8,7 @@ from lib.msgproto import recvmsg, sendmsg
 REGISTRY_DB = 'servers/resolver/registry.sqlite3'
 WRITE_DATA = 0
 READ_DATA = 1
+DELETE_DATA = 2
 CLUSTER = 0
 MAINSERVER = 1
 RESPONSE_SUCC = 2
@@ -39,34 +40,60 @@ def init_registry():
             conn.commit()
 
 
-def add_cluster_addr(cluster_name, ip, port):
+def add_cluster_addr(name, ip, port):
     with sqlite3.connect(REGISTRY_DB) as conn:
         cursor = conn.cursor()
-        cursor.execute('INSERT INTO clusters VALUES (?, ?, ?)', (cluster_name, ip, port))
+        cursor.execute('INSERT INTO clusters VALUES (?, ?, ?)', (name, ip, port))
         conn.commit()
 
 
-def get_cluster_addr(cluster_name):
+def get_cluster_addr(name):
     with sqlite3.connect(REGISTRY_DB) as conn:
         cursor = conn.cursor()
-        cursor.execute('SELECT ip, port FROM clusters WHERE name=?', (cluster_name,))
+        cursor.execute('SELECT ip, port FROM clusters WHERE name=?', (name,))
 
         return cursor.fetchone() or (None, None)
 
 
-def add_mainserver_addr(mainserver_pseudo, ip, port):
+def add_mainserver_addr(name, ip, port):
     with sqlite3.connect(REGISTRY_DB) as conn:
         cursor = conn.cursor()
-        cursor.execute('INSERT INTO mainservers VALUES (?, ?, ?)', (mainserver_pseudo, ip, port))
+        cursor.execute('INSERT INTO mainservers VALUES (?, ?, ?)', (name, ip, port))
         conn.commit()
 
 
-def get_mainserver_addr(mainserver_pseudo):
+def get_mainserver_addr(name):
     with sqlite3.connect(REGISTRY_DB) as conn:
         cursor = conn.cursor()
-        cursor.execute('SELECT ip, port FROM mainservers WHERE name=?', (mainserver_pseudo,))
+        cursor.execute('SELECT ip, port FROM mainservers WHERE name=?', (name,))
 
         return cursor.fetchone() or (None, None)
+
+
+def delete_cluster_addr(name):
+    with sqlite3.connect(REGISTRY_DB) as conn:
+        cursor = conn.cursor()
+
+        query = 'DELETE FROM clusters'
+
+        if name != '*':
+            query += ' WHERE name=?'
+
+        cursor.execute(query, (name,))
+        conn.commit()
+
+
+def delete_mainserver_addr(name):
+    with sqlite3.connect(REGISTRY_DB) as conn:
+        cursor = conn.cursor()
+
+        query = 'DELETE FROM mainservers'
+
+        if name != '*':
+            query += ' WHERE name=?'
+
+        cursor.execute(query, (name,))
+        conn.commit()
 
 
 def response(code: int, text: bytes):
@@ -82,6 +109,66 @@ def conn_handler(_, server_socket):
     return conn
 
 
+def _handle_write_request(conn, body, request_to):
+    client_ip, client_port = conn.getpeername()
+    name, ip, port = loads(body)
+
+    if request_to == CLUSTER:
+        add_cluster_addr(name, ip, port)
+        print(f'[RESOLVER] Added cluster "{name}" with address {ip}:{port} '
+              f'(by {client_ip}:{client_port})')
+    elif request_to == MAINSERVER:
+        add_mainserver_addr(name, ip, port)
+        print(f'[RESOLVER] Added main server "{name}" with address {ip}:{port} '
+              f'(by {client_ip}:{client_port})')
+
+
+def _handle_read_request(conn, request_to, body):
+    client_ip, client_port = conn.getpeername()
+
+    if request_to == CLUSTER:
+        print(f'[RESOLVER] Getting address for cluster "{body}"...', end=' ')
+        method = get_cluster_addr
+    elif request_to == MAINSERVER:
+        print(f'[RESOLVER] Getting address for main server "{body}"...', end=' ')
+        method = get_mainserver_addr
+    else:
+        print('[RESOLVER] Received unknown REQUEST_TO code from '
+              f'{client_ip}:{client_port} ({request_to})')
+        return sendmsg(conn, response(RESPONSE_FAIL, b'bad-request-to'))
+
+    ip, port = method(body)
+
+    if ip is None:
+        print('fail (not found)')
+        return sendmsg(conn, response(RESPONSE_FAIL, b'not-found'))
+
+    print(f'ok ({ip}:{port})')
+
+    encoded_json = dumps([ip, port]).encode()
+    sendmsg(conn, response(RESPONSE_SUCC, encoded_json))
+
+
+def _handle_delete_request(conn, request_to, body):
+    ip, port = conn.getpeername()
+
+    if request_to == CLUSTER:
+        print(f'[RESOLVER] Deleting address of cluster "{body}"')
+        method = delete_cluster_addr
+    elif request_to == MAINSERVER:
+        print(f'[RESOLVER] Deleting address of main server "{body}"...', end=' ')
+        method = get_mainserver_addr
+    else:
+        print(f'[RESOLVER] Received unknown REQUEST_TO code from {ip}:{port} ({request_to})')
+        return sendmsg(conn, response(RESPONSE_FAIL, b'bad-request-to'))
+
+    method(body)
+
+
+def handle_bad_request_type(conn, *args):
+    sendmsg(conn, response(RESPONSE_FAIL, b'bad-request-type'))
+
+
 def request_handler(_, conn):
     packet = recvmsg(conn)
     ip, port = conn.getpeername()
@@ -91,38 +178,15 @@ def request_handler(_, conn):
         return sendmsg(conn, response(RESPONSE_FAIL, b'bad-request'))
 
     request_type, request_to = packet[:2]
-    body = packet[2:]
+    body = packet[2:].decode()
+    requests_handlers_map = {
+        WRITE_DATA: _handle_write_request,
+        READ_DATA: _handle_read_request,
+        DELETE_DATA: _handle_delete_request,
+    }
 
-    if request_type == WRITE_DATA:
-        name, ip, port = loads(body)
-
-        if request_to == CLUSTER:
-            add_cluster_addr(name, ip, port)
-            print(f'[RESOLVER] Added cluster "{name}" with address {ip}:{port}')
-        elif request_to == MAINSERVER:
-            add_mainserver_addr(name, ip, port)
-            print(f'[RESOLVER] Added main server "{name}" with address {ip}:{port}')
-    elif request_type == READ_DATA:
-        if request_to == CLUSTER:
-            print(f'[RESOLVER] Getting address for cluster "{body}"...', end=' ')
-            method = get_cluster_addr
-        elif request_to == MAINSERVER:
-            print(f'[RESOLVER] Getting address for main server "{body}"...', end=' ')
-            method = get_mainserver_addr
-        else:
-            print(f'[RESOLVER] Received unknown REQUEST_TO code from {ip}:{port}: {request_type}')
-            return sendmsg(conn, response(RESPONSE_FAIL, b'bad-request-to'))
-
-        ip, port = method(body.decode())
-
-        if ip is None:
-            print('fail (not found)')
-            return sendmsg(conn, response(RESPONSE_FAIL, b'not-found'))
-
-        print(f'ok ({ip}:{port})')
-
-        encoded_json = dumps([ip, port]).encode()
-        sendmsg(conn, response(RESPONSE_SUCC, encoded_json))
+    _request_handler = requests_handlers_map.get(request_type, handle_bad_request_type)
+    _request_handler(conn, request_to, body)
 
 
 def disconnect_handler(_, conn):
