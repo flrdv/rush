@@ -1,6 +1,9 @@
 import select
+from re import fullmatch
 from threading import Thread
-from socket import socket, MSG_PEEK
+from socket import socket, timeout, MSG_PEEK
+
+from lib.msgproto import recvbytes, sendmsg, recvmsg
 
 
 """
@@ -26,11 +29,12 @@ epoll_server = epollserver.EpollServer(('localhost', 8080))
 
 
 @epoll_server.handler(on_event=epollserver.CONNECT)
-def connect_handler(_, server):
-    conn, addr = server.accept()
-    print('new conn:', addr)
+def connect_handler(_, conn):
+    ip, port = conn.getpeername()
+    print('new conn:', ip, port)
     
-    return conn
+    # return epollserver.DENY_CONN - if connection shouldn't be processed and
+    # registered in epoll. Use it if you deny connection
     
 
 # OR
@@ -46,6 +50,9 @@ CONNECT = 0
 DISCONNECT = 1
 RECEIVE = 2
 RESPONSE = 3
+
+# constant that being returned by conn handler if connection has been refused
+DENY_CONN = 5
 
 
 class EpollServer:
@@ -96,7 +103,13 @@ class EpollServer:
                     continue
 
                 if event_type == CONNECT:
-                    conn = handler(CONNECT, self.server_sock)
+                    conn, addr = self.server_sock.accept()
+                    conn = handler(CONNECT, conn)
+
+                    if conn == DENY_CONN:
+                        # connection hasn't been accepted
+                        continue
+
                     conn.setblocking(False)
                     conn_fileno = conn.fileno()
                     self.conns[conn_fileno] = conn
@@ -144,3 +157,102 @@ class EpollServer:
 
     def __del__(self):
         self.stop()
+
+
+def handshake(i_am: str):
+    """
+    simple decorator that implements simple handshake protocol
+
+    this protocol lets us to detect that requesting server is system's node
+    by this steps:
+        1) client sending to server these bytes: b'\x06\x09\x04\x02\x00'
+        2) client receives from server same bytes but reversed
+        3) client sends byte \x69 (accepting server)
+        4) server responds with it's name (using lib.msgproto.sendmsg)
+        5) client sends \x00 if he doesn't connecting, or \x01 if he's connecting
+
+    :param i_am: name of node
+    """
+
+    def decorator(conn_handler):
+        def wrapper(event_type, conn: socket):
+            if event_type != CONNECT:
+                return conn_handler(event_type, conn)
+
+            old_timeout = conn.gettimeout()
+            conn.settimeout(1)
+
+            try:
+                bytesorder = recvbytes(conn, 6)
+
+                if bytesorder != b'\x06\x09\x04\x02\x00':
+                    conn.close()  # first step failed
+
+                    return DENY_CONN
+
+                conn.send(b'\x00\x02\x04\x09\x06')
+                client_response = conn.recv(1)
+
+                if client_response != b'\x69':
+                    conn.close()
+
+                    return DENY_CONN
+
+                sendmsg(conn, i_am.encode())
+                is_client_connecting = conn.recv(1)
+
+                if not is_client_connecting:
+                    conn.close()
+
+                    return DENY_CONN
+
+                conn.settimeout(old_timeout)
+            except (timeout, BrokenPipeError):
+                conn.close()
+
+                return DENY_CONN
+
+        return wrapper
+
+    return decorator
+
+
+def do_handshake(conn, node_name=r'\w+'):
+    """
+    implements client-side protocol of handshake()
+
+    :param conn: connection to server
+    :param node_name: regexp (or just plain text) that contains name of required node
+    :return: True if success or False if fail. Conn object is being closed if fail
+    """
+
+    old_timeout = conn.gettimeout()
+    conn.settimeout(1)
+
+    try:
+        conn.send(b'\x06\x09\x04\x02\x00')
+        server_response = recvbytes(conn, 6)
+
+        if server_response != b'\x00\x02\x04\x09\x06':
+            conn.close()
+
+            return False
+
+        conn.send(b'\x69')
+        server_name = recvmsg(conn).decode()
+
+        if not fullmatch(node_name, server_name):
+            conn.send(b'\x00')
+            conn.send()
+
+            return False
+
+        conn.send(b'\x01')
+    except (timeout, BrokenPipeError):
+        conn.close()
+
+        return False
+
+    conn.settimeout(old_timeout)
+
+    return True
