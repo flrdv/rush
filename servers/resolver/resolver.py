@@ -113,7 +113,7 @@ def request_handler(_, conn):
             print(f'[RESOLVER] Received unknown REQUEST_TO code from {ip}:{port}: {request_type}')
             return sendmsg(conn, response(RESPONSE_FAIL, b'bad-request-to'))
 
-        ip, port = method(body)
+        ip, port = method(body.decode())
 
         if ip is None:
             print('fail (not found)')
