@@ -27,45 +27,24 @@ SESSIONS = {}   # conn: (ip, addr). Using cause closed conn-obj does not contain
 
 
 def init_registry():
-    queries = (
-        'CREATE TABLE IF NOT EXISTS clusters (name string, ip string, port integer)',
-        'CREATE TABLE IF NOT EXISTS mainservers (name string, ip string, port integer)'
-    )
-
     with sqlite3.connect(REGISTRY_DB) as conn:
         cursor = conn.cursor()
-
-        for query in queries:
-            cursor.execute(query)
-            conn.commit()
+        cursor.execute('CREATE TABLE IF NOT EXISTS servers '
+                       '(typeofserver string, name string, ip string, port integer)')
+        conn.commit()
 
 
 def add_cluster_addr(name, ip, port):
     with sqlite3.connect(REGISTRY_DB) as conn:
         cursor = conn.cursor()
-        cursor.execute('INSERT INTO clusters VALUES (?, ?, ?)', (name, ip, port))
+        cursor.execute('INSERT INTO servers VALUES ("cluster", ?, ?, ?)', (name, ip, port))
         conn.commit()
 
 
 def get_cluster_addr(name):
     with sqlite3.connect(REGISTRY_DB) as conn:
         cursor = conn.cursor()
-        cursor.execute('SELECT ip, port FROM clusters WHERE name=?', (name,))
-
-        return cursor.fetchone() or (None, None)
-
-
-def add_mainserver_addr(name, ip, port):
-    with sqlite3.connect(REGISTRY_DB) as conn:
-        cursor = conn.cursor()
-        cursor.execute('INSERT INTO mainservers VALUES (?, ?, ?)', (name, ip, port))
-        conn.commit()
-
-
-def get_mainserver_addr(name):
-    with sqlite3.connect(REGISTRY_DB) as conn:
-        cursor = conn.cursor()
-        cursor.execute('SELECT ip, port FROM mainservers WHERE name=?', (name,))
+        cursor.execute('SELECT ip, port FROM servers WHERE name=? AND typeofserver="cluster"', (name,))
 
         return cursor.fetchone() or (None, None)
 
@@ -74,23 +53,38 @@ def delete_cluster_addr(name):
     with sqlite3.connect(REGISTRY_DB) as conn:
         cursor = conn.cursor()
 
-        query = 'DELETE FROM clusters'
+        query = 'DELETE FROM servers WHERE typeofserver="cluster"'
 
         if name != '*':
-            query += ' WHERE name=?'
+            query += ' AND name=?'
 
         cursor.execute(query, (name,))
         conn.commit()
+
+
+def add_mainserver_addr(name, ip, port):
+    with sqlite3.connect(REGISTRY_DB) as conn:
+        cursor = conn.cursor()
+        cursor.execute('INSERT INTO servers VALUES ("mainserver", ?, ?, ?)', (name, ip, port))
+        conn.commit()
+
+
+def get_mainserver_addr(name):
+    with sqlite3.connect(REGISTRY_DB) as conn:
+        cursor = conn.cursor()
+        cursor.execute('SELECT ip, port FROM servers WHERE name=? AND typeofserver="mainserver"', (name,))
+
+        return cursor.fetchone() or (None, None)
 
 
 def delete_mainserver_addr(name):
     with sqlite3.connect(REGISTRY_DB) as conn:
         cursor = conn.cursor()
 
-        query = 'DELETE FROM mainservers'
+        query = 'DELETE FROM servers WHERE typeofserver="mainserver"'
 
         if name != '*':
-            query += ' WHERE name=?'
+            query += ' AND name=?'
 
         cursor.execute(query, (name,))
         conn.commit()
