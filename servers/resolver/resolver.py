@@ -100,13 +100,10 @@ def response(code: int, text: bytes):
     return code.to_bytes(1, 'little') + text
 
 
-def conn_handler(_, server_socket):
-    conn, addr = server_socket.accept()
-    ip, port = addr
-    SESSIONS[conn] = (ip, port)
+def conn_handler(_, new_conn):
+    ip, port = new_conn.getpeername()
+    SESSIONS[new_conn] = (ip, port)
     print(f'[RESOLVER] Connected: {ip}:{port}')
-
-    return conn
 
 
 def _handle_write_request(conn, request_to, body):
