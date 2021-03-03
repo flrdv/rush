@@ -7,11 +7,11 @@ Detailed description of usage and architecture will be provided later, after pro
 Road-to-the-release components' progress:
   - Resolver: done
   - Resolver api: done
+  - Log server: done (untested)
+  - Log server api: not started
   - Cluster server: not started
   - Endpoint client: not started
   - Main server (http): not started
-  - Log server: not started
-  - Log server api: not started
   - Epoll Server Lib (lib.epollserver): done
   - Periodic Events Lib (lib.periodic_events): done (untested)
   - Messages Delivering protocol (lib.msgproto): done
