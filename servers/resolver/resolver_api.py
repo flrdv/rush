@@ -44,7 +44,7 @@ class ResolverApi:
 
         return response
 
-    def write_cluster(self, name, addr):
+    def add_cluster(self, name, addr):
         request_body = dumps([name, addr[0], addr[1]])
         self.request(WRITE, CLUSTER, request_body.encode(), wait_response=False)
 
@@ -56,7 +56,7 @@ class ResolverApi:
 
         return response
 
-    def write_main_server(self, name, addr):
+    def add_main_server(self, name, addr):
         request_body = dumps([name, addr[0], addr[1]])
         self.request(WRITE, MAINSERVER, request_body.encode())
 
