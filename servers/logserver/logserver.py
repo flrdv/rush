@@ -75,5 +75,8 @@ class LogServer:
         self.epoll_server.add_handler(request_handler, lib.epollserver.RECEIVE)
         self.epoll_server.add_handler(disconnect_handler, lib.epollserver.DISCONNECT)
 
+    def start(self, threaded=False):
+        self.epoll_server.start(threaded=threaded)
+
 
 init_log_db()
