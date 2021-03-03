@@ -69,6 +69,10 @@ def get_mainserver_addr(mainserver_pseudo):
         return cursor.fetchone() or (None, None)
 
 
+def response(code: int, text: bytes):
+    return code.to_bytes(1, 'little') + text
+
+
 def conn_handler(_, server_socket):
     conn, addr = server_socket.accept()
     ip, port = addr
@@ -84,7 +88,7 @@ def request_handler(_, conn):
 
     if len(packet) < 3:
         print(f'[RESOLVER] Received too short packet from {ip}:{port}: {packet}')
-        return sendmsg(conn, RESPONSE_FAIL + b'bad-request')
+        return sendmsg(conn, response(RESPONSE_FAIL, b'bad-request'))
 
     request_type, request_to = packet[:2]
     body = packet[2:]
@@ -107,18 +111,18 @@ def request_handler(_, conn):
             method = get_mainserver_addr
         else:
             print(f'[RESOLVER] Received unknown REQUEST_TO code from {ip}:{port}: {request_type}')
-            return sendmsg(conn, RESPONSE_FAIL + b'bad-request-to')
+            return sendmsg(conn, response(RESPONSE_FAIL, b'bad-request-to'))
 
         ip, port = method(body)
 
         if ip is None:
             print('fail (not found)')
-            return sendmsg(conn, RESPONSE_FAIL + b'not-found')
+            return sendmsg(conn, response(RESPONSE_FAIL, b'not-found'))
 
         print(f'ok ({ip}:{port})')
 
         encoded_json = dumps([ip, port]).encode()
-        sendmsg(conn, RESPONSE_SUCC + encoded_json)
+        sendmsg(conn, response(RESPONSE_SUCC, encoded_json))
 
 
 def disconnect_handler(_, conn):
