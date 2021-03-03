@@ -8,10 +8,11 @@ Road-to-the-release components' progress:
   - Resolver: done
   - Resolver api: done
   - Log server: done (untested)
-  - Log server api: not started
+  - Log server api: in progress (waiting for auto re-connecting)
   - Cluster server: not started
   - Endpoint client: not started
   - Main server (http): not started
   - Epoll Server Lib (lib.epollserver): done
+  - Dumb User Protection: done
   - Periodic Events Lib (lib.periodic_events): done (untested)
   - Messages Delivering protocol (lib.msgproto): done
