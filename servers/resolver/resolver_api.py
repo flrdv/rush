@@ -6,6 +6,7 @@ from lib.msgproto import sendmsg, recvmsg
 
 WRITE = b'\x00'
 READ = b'\x01'
+DELETE = b'\x02'
 CLUSTER = b'\x00'
 MAINSERVER = b'\x01'
 SUCC = 2    # after receiving bytes automatically being
@@ -59,6 +60,12 @@ class ResolverApi:
     def add_main_server(self, name, addr):
         request_body = dumps([name, addr[0], addr[1]])
         self.request(WRITE, MAINSERVER, request_body.encode())
+
+    def delete_cluster(self, name):
+        self.request(DELETE, CLUSTER, name.encode(), wait_response=False)
+
+    def delete_main_server(self, name):
+        self.request(DELETE, MAINSERVER, name.encode, wait_response=False)
 
     def stop(self):
         self.sock.close()
