@@ -112,7 +112,12 @@ class EpollServer:
         if fileno == self.server_sock.fileno():
             return CONNECT
         elif event & select.EPOLLIN:
-            if not self.conns[fileno].recv(1, MSG_PEEK):
+            try:
+                peek_byte = self.conns[fileno].recv(1, MSG_PEEK)
+            except ConnectionResetError:
+                return DISCONNECT
+
+            if not peek_byte:
                 return DISCONNECT
 
             return RECEIVE
