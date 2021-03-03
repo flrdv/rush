@@ -1,5 +1,5 @@
 import sqlite3
-from json import loads, dumps
+from json import loads, dumps, JSONDecodeError
 
 import lib.epollserver
 from lib.msgproto import recvmsg, sendmsg
@@ -111,7 +111,12 @@ def conn_handler(_, server_socket):
 
 def _handle_write_request(conn, request_to, body):
     client_ip, client_port = conn.getpeername()
-    name, ip, port = loads(body)
+
+    try:
+        name, ip, port = loads(body)
+    except (ValueError, JSONDecodeError):
+        print(f'[RESOLVER] Received corrupted json body from {client_ip}:{client_port}: {body}')
+        return sendmsg(conn, response(RESPONSE_FAIL, b'invalid-request-body'))
 
     if request_to == CLUSTER:
         add_cluster_addr(name, ip, port)
