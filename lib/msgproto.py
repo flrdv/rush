@@ -1,5 +1,4 @@
 import socket
-from struct import pack, unpack
 
 
 FUTURE_MSG_LEN_BYTES = 4
@@ -7,7 +6,7 @@ READ_CHUNK_SIZE = 4096
 
 
 def sendmsg(sock: socket.socket, data: bytes):
-    packet_len = pack('>I', len(data))
+    packet_len = len(data).to_bytes(4, 'little')
 
     return sock.send(packet_len + data)
 
@@ -18,10 +17,15 @@ def recvmsg(sock: socket.socket):
     while len(encoded_msg_len) < FUTURE_MSG_LEN_BYTES:
         encoded_msg_len += sock.recv(FUTURE_MSG_LEN_BYTES - len(encoded_msg_len))
 
-    msg_len, = unpack('>I', encoded_msg_len)
-    msg = b''
+    msg_len = int.from_bytes(encoded_msg_len, 'little')
 
-    while len(msg) < msg_len:
-        msg += sock.recv(READ_CHUNK_SIZE)
+    return recvbytes(sock, msg_len)
 
-    return msg
+
+def recvbytes(sock, bytescount):
+    source = b''
+
+    while len(source) < bytescount:
+        source += sock.recv(bytescount - len(source))
+
+    return source
