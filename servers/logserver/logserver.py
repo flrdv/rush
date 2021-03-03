@@ -26,12 +26,10 @@ def add_log_entry(log_datetime, log_type, log_entry):
         conn.commit()
 
 
-def new_conn_handler(_, server_sock):
-    conn, (ip, port) = server_sock.accept()
-    SESSIONS[conn] = (ip, port)
+def new_conn_handler(_, new_conn):
+    ip, port = new_conn.getpeername()
+    SESSIONS[new_conn] = (ip, port)
     print(f'[LOGSERVER] New connection: {ip}:{port}')
-
-    return conn
 
 
 def request_handler(_, conn):
