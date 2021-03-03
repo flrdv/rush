@@ -22,6 +22,9 @@ requesting resolver be like:
 """
 
 
+SESSIONS = {}   # conn: (ip, addr). Using cause closed conn-obj does not contains addr of endpoint
+
+
 def init_registry():
     queries = (
         'CREATE TABLE IF NOT EXISTS clusters (name string, ip string, port integer)',
@@ -69,6 +72,7 @@ def get_mainserver_addr(mainserver_pseudo):
 def conn_handler(_, server_socket):
     conn, addr = server_socket.accept()
     ip, port = addr
+    SESSIONS[conn] = (ip, port)
     print(f'[RESOLVER] Connected: {ip}:{port}')
 
     return conn
@@ -118,7 +122,7 @@ def request_handler(_, conn):
 
 
 def disconnect_handler(_, conn):
-    ip, port = conn.getpeername()
+    ip, port = SESSIONS[conn]
     print(f'[RESOLVER] Disconnected: {ip}:{port}')
 
 
