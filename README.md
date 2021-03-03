@@ -6,7 +6,7 @@ Detailed description of usage and architecture will be provided later, after pro
 
 Road-to-the-release components' progress:
   - Resolver: done
-  - Resolver api: in progress
+  - Resolver api: done
   - Cluster server: not started
   - Endpoint client: not started
   - Main server (http): not started
