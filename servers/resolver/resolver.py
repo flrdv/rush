@@ -109,7 +109,7 @@ def conn_handler(_, server_socket):
     return conn
 
 
-def _handle_write_request(conn, body, request_to):
+def _handle_write_request(conn, request_to, body):
     client_ip, client_port = conn.getpeername()
     name, ip, port = loads(body)
 
