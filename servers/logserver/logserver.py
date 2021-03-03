@@ -6,7 +6,7 @@ import lib.epollserver
 from lib.msgproto import recvmsg
 
 
-LOGDB = 'server/logserver/logs.sqlite3'
+LOGDB = 'servers/logserver/logs.sqlite3'
 SESSIONS = {}   # conn: (ip, port)
 
 
