@@ -31,7 +31,7 @@ class ResolverApi:
             response_code = response[0]
             response_body = response[1:]
 
-            if response_code == SUCC and jsonify_resposne:
+            if response_code in (SUCC, STATE_DONE) and jsonify_resposne:
                 response_body = loads(response_body.decode())
 
             return response_code, response_body
