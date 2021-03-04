@@ -13,6 +13,6 @@ Road-to-the-release components' progress:
   - Endpoint client: not started
   - Main server (http): not started
   - Epoll Server Lib (lib.epollserver): done
-  - Dumb User Protection: done
-  - Periodic Events Lib (lib.periodic_events): done (untested)
+  - Dumb User Protection (lib.epollserver.handshake, lib.epollserver.do_handshake): done
+  - Periodic Events Lib (lib.periodic_events): done
   - Messages Delivering protocol (lib.msgproto): done
