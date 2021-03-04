@@ -3,13 +3,12 @@ from json import loads, dumps
 
 from lib.msgproto import sendmsg, recvmsg
 
-
 WRITE = b'\x00'
 READ = b'\x01'
 DELETE = b'\x02'
 ADD_STATE = b'\x03'
-SUCC = 2    # after receiving bytes automatically being
-FAIL = 3    # converted to integer
+SUCC = 2  # after receiving bytes automatically being
+FAIL = 3  # converted to integer
 STATE_DONE = 4
 
 
@@ -85,6 +84,25 @@ class ResolverApi:
     def delete_log_server(self, name):
         self.delete_server('logserver', name)
 
+    def wait_for(self, typeof, name):
+        code, response = self.request(ADD_STATE, (typeof + ':' + name).encode(),
+                                      wait_response=True)
+
+        if code != STATE_DONE:
+            raise UnexpectedResponseError('got an unexpected response on state from '
+                                          'resolver: ' + str(code))
+
+        return response
+
+    def wait_for_cluster(self, name):
+        return self.wait_for('cluster', name)
+
+    def wait_for_mainserver(self, name):
+        self.wait_for('mainserver', name)
+
+    def wait_for_logserver(self, name):
+        self.wait_for('logserver', name)
+
     def stop(self):
         self.sock.close()
 
@@ -99,3 +117,6 @@ class ClusterNotFoundError(ApiError): pass
 
 
 class MainServerNotFoundError(ApiError): pass
+
+
+class UnexpectedResponseError(ApiError): pass
