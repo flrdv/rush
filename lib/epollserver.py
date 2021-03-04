@@ -186,7 +186,7 @@ def handshake(i_am: str):
 
             try:
                 print('receiving bytes order')
-                bytesorder = recvbytes(conn, 6)
+                bytesorder = recvbytes(conn, 4)
                 print('bytes order has been received')
 
                 if bytesorder != b'\x69\x04\x02\x00':
@@ -248,7 +248,7 @@ def do_handshake(conn, node_name=r'\w+'):
         print('sending...')
         conn.send(b'\x69\x04\x02\x00')
         print('waiting reversed bytes order')
-        server_response = recvbytes(conn, 6)
+        server_response = recvbytes(conn, 4)
         print('received')
 
         if server_response != b'\x00\x02\x04\x69':
