@@ -164,7 +164,7 @@ def handshake(i_am: str):
 
     this protocol lets us to detect that requesting server is system's node
     by this steps:
-        1) client sending to server these bytes: b'\x06\x09\x04\x02\x00'
+        1) client sending to server these bytes: b'\x69\x04\x02\x00'
         2) client receives from server same bytes but reversed
         3) client sends byte \x69 (accepting server)
         4) server responds with it's name (using lib.msgproto.sendmsg)
@@ -189,14 +189,14 @@ def handshake(i_am: str):
                 bytesorder = recvbytes(conn, 6)
                 print('bytes order has been received')
 
-                if bytesorder != b'\x06\x09\x04\x02\x00':
+                if bytesorder != b'\x69\x04\x02\x00':
                     print('but bytes order is invalid')
                     conn.close()  # first step failed
 
                     return DENY_CONN
 
                 print('responsing with the same bytes order, but reversed')
-                conn.send(b'\x00\x02\x04\x09\x06')
+                conn.send(b'\x00\x02\x04\x69')
                 print('waiting b\'\\x69\' byte from client')
                 client_response = conn.recv(1)
 
@@ -246,12 +246,12 @@ def do_handshake(conn, node_name=r'\w+'):
 
     try:
         print('sending...')
-        conn.send(b'\x06\x09\x04\x02\x00')
+        conn.send(b'\x69\x04\x02\x00')
         print('waiting reversed bytes order')
         server_response = recvbytes(conn, 6)
         print('received')
 
-        if server_response != b'\x00\x02\x04\x09\x06':
+        if server_response != b'\x00\x02\x04\x69':
             print('but it\'s wrong byte order...')
 
             conn.close()
