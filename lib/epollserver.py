@@ -175,54 +175,38 @@ def handshake(i_am: str):
 
     def decorator(handler):
         def wrapper(event_type, conn: socket):
-            print('wrapping call with event type:', event_type)
-
             if event_type != CONNECT:
-                print('event is not CONNECT event, passing it')
                 return handler(event_type, conn)
 
             old_timeout = conn.gettimeout()
             conn.settimeout(2)
 
             try:
-                print('receiving bytes order')
                 bytesorder = recvbytes(conn, 4)
-                print('bytes order has been received')
 
                 if bytesorder != b'\x69\x04\x02\x00':
-                    print('but bytes order is invalid')
                     conn.close()  # first step failed
 
                     return DENY_CONN
 
-                print('responsing with the same bytes order, but reversed')
                 conn.send(b'\x00\x02\x04\x69')
-                print('waiting b\'\\x69\' byte from client')
                 client_response = conn.recv(1)
 
                 if client_response != b'\x69':
-                    print('received, but it isn\'t required byte:', client_response)
                     conn.close()
 
                     return DENY_CONN
 
-                print('telling client myself name')
                 sendmsg(conn, i_am.encode())
-                print('receiving client\'s decision')
                 is_client_connecting = conn.recv(1)
 
                 if not is_client_connecting:
-                    print('client denies connection')
                     conn.close()
 
                     return DENY_CONN
 
-                print('client applied connection')
-
                 conn.settimeout(old_timeout)
             except (timeout, BrokenPipeError) as exc:
-                print('an error occurred:', exc)
-
                 conn.close()
 
                 return DENY_CONN
@@ -245,33 +229,24 @@ def do_handshake(conn, node_name=r'\w+'):
     conn.settimeout(2)
 
     try:
-        print('sending...')
         conn.send(b'\x69\x04\x02\x00')
-        print('waiting reversed bytes order')
         server_response = recvbytes(conn, 4)
-        print('received')
 
         if server_response != b'\x00\x02\x04\x69':
-            print('but it\'s wrong byte order...')
-
             conn.close()
 
             return False
 
         conn.send(b'\x69')
-        print('receiving server\'s name')
         server_name = recvmsg(conn).decode()
 
         if not fullmatch(node_name, server_name):
-            print('oups, it doesn\'t matching we require')
             conn.send(b'\x00')
 
             return False
 
         conn.send(b'\x01')
     except (timeout, BrokenPipeError) as exc:
-        print('error occurred:', exc)
-
         conn.close()
 
         return False
