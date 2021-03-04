@@ -104,7 +104,7 @@ class EpollServer:
 
                 if event_type == CONNECT:
                     conn, addr = self.server_sock.accept()
-                    conn = handler(CONNECT, conn)
+                    handler(CONNECT, conn)
 
                     if conn == DENY_CONN:
                         # connection hasn't been accepted
