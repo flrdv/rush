@@ -104,9 +104,8 @@ class EpollServer:
 
                 if event_type == CONNECT:
                     conn, addr = self.server_sock.accept()
-                    handler(CONNECT, conn)
 
-                    if conn == DENY_CONN:
+                    if handler(CONNECT, conn) == DENY_CONN:
                         # connection hasn't been accepted
                         continue
 
@@ -174,13 +173,13 @@ def handshake(i_am: str):
     :param i_am: name of node
     """
 
-    def decorator(conn_handler):
+    def decorator(handler):
         def wrapper(event_type, conn: socket):
             if event_type != CONNECT:
-                return conn_handler(event_type, conn)
+                return handler(event_type, conn)
 
             old_timeout = conn.gettimeout()
-            conn.settimeout(1)
+            conn.settimeout(2)
 
             try:
                 bytesorder = recvbytes(conn, 6)
@@ -227,28 +226,36 @@ def do_handshake(conn, node_name=r'\w+'):
     """
 
     old_timeout = conn.gettimeout()
-    conn.settimeout(1)
+    conn.settimeout(2)
 
     try:
+        print('sending...')
         conn.send(b'\x06\x09\x04\x02\x00')
+        print('waiting reversed bytes order')
         server_response = recvbytes(conn, 6)
+        print('received')
 
         if server_response != b'\x00\x02\x04\x09\x06':
+            print('but it\'s wrong byte order...')
+
             conn.close()
 
             return False
 
         conn.send(b'\x69')
+        print('receiving server\'s name')
         server_name = recvmsg(conn).decode()
 
         if not fullmatch(node_name, server_name):
+            print('oups, it doesn\'t matching we require')
             conn.send(b'\x00')
-            conn.send()
 
             return False
 
         conn.send(b'\x01')
-    except (timeout, BrokenPipeError):
+    except (timeout, BrokenPipeError) as exc:
+        print('error occurred:', exc)
+
         conn.close()
 
         return False
