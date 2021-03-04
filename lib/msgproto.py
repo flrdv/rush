@@ -24,8 +24,12 @@ def recvmsg(sock: socket.socket):
 
 def recvbytes(sock, bytescount):
     source = b''
+    bytes_received = 0
 
-    while len(source) < bytescount:
-        source += sock.recv(bytescount - len(source))
+    while bytes_received < bytescount:
+        received = sock.recv(bytescount - len(source))
+        bytes_received += len(received)
+
+        source += received
 
     return source
