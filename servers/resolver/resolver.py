@@ -194,7 +194,13 @@ class Resolver:
         if name not in self.states[typeofserver]:
             return
 
-        for conn in self.states[typeofserver][name]:
+        waiting_nodes = self.states[typeofserver][name]
+        ip, port = new_addr
+
+        print(f'[RESOLVER] {typeofserver} "{name}" is online, telling '
+              f'{len(waiting_nodes)} nodes new address ({ip}:{port})')
+
+        for conn in waiting_nodes:
             sendmsg(conn, response(STATE_DONE, dumps(new_addr).encode()))
 
         self.states[typeofserver].pop(name)
