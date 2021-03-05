@@ -11,7 +11,7 @@ Road-to-the-release components' progress:
   - Log server api: in progress (waiting for auto re-connecting)
   - Cluster server: not started
   - Endpoint client: not started
-  - Main server (http): not started
+  - Main server (http): in progress
   - Epoll Server Lib (lib.epollserver): done
   - Dumb User Protection (lib.epollserver.handshake, lib.epollserver.do_handshake): done
   - Periodic Events Lib (lib.periodic_events): done
