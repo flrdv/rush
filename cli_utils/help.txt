@@ -1,2 +1,0 @@
-Commands:
-    run-resolver [--ip=<ip>] [--port=<port>]
