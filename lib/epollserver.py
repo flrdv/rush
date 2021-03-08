@@ -60,6 +60,7 @@ class EpollServer:
         self.server_sock = socket()
         self.epoll = select.epoll()
         self.handlers = {}  # epoll event: callable
+        self.addr = addr
 
         self.server_sock.bind(addr)
         self.server_sock.listen(maxconns)
