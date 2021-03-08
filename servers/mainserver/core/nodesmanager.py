@@ -93,6 +93,14 @@ class NodesManager:
         if error occurred, client receives packet:
             b'\x00<reason>'
         otherwise, client will receive just b'\x01' byte
+
+        Heartbeat protocol & updates delivering:
+            heartbeat packet is a single byte b'\x69'
+            it requires any response with any length (but also single byte
+            expected to avoid multiple RECEIVE events)
+
+            when updates delivering, firstly client receives single byte b'\x96'
+            after that, he receives full packet using lib.msgproto
         """
 
         raw = recvmsg(conn)
@@ -143,12 +151,13 @@ class NodesManager:
             self.callback(response_to, response_body)
         else:   # heartbeat-packet from cluster
             self.clusters[conn][2] = time()  # update cluster_last_heartbeat_received_at
-            sendmsg(conn, HEARTBEAT)               # response with a heartbeat packet
+            conn.send(HEARTBEAT)             # response with a heartbeat packet
 
     def send_request(self, request):
         for conn, (name, filter_, _) in self.clusters.items():
             if compare_filters(filter_, request):
-                sendmsg(conn, UPDATE + dumps(request).encode())
+                conn.send(UPDATE)
+                sendmsg(conn, dumps(request).encode())
 
                 return True
 
