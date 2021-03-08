@@ -1,4 +1,5 @@
 import socket
+from time import sleep
 from json import loads, dumps
 
 from lib.msgproto import sendmsg, recvmsg
@@ -13,14 +14,30 @@ STATE_DONE = 4
 
 
 class ResolverApi:
-    def __init__(self, addr=('localhost', 11100)):
+    def __init__(self, addr=('localhost', 11100), wait_for_resolver=True):
+        """
+        :param addr: address of resolver
+        :param wait_for_resolver: if resolver is unavailable, wait until it will be available
+                                  blocks function
+        """
         self.addr = addr
+        self.wait_for_resolver = wait_for_resolver
         self.sock = socket.socket()
 
     def connect(self):
-        self.sock.connect(self.addr)
+        while True:
+            try:
+                self.sock.connect(self.addr)
+                break
+            except (ConnectionResetError, ConnectionRefusedError) as exc:
+                print('[RESOLVER-API] Failed to connect to the resolver:', exc)
 
-        return 'connected'
+                if not self.wait_for_resolver:
+                    return False
+
+            sleep(1)
+
+        return True
 
     def request(self, request_type: bytes, data: bytes,
                 wait_response: bool = True, jsonify_resposne: bool = True):
@@ -102,6 +119,14 @@ class ResolverApi:
 
     def wait_for_logserver(self, name):
         self.wait_for('logserver', name)
+
+    def __enter__(self):
+        self.connect()
+
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.stop()
 
     def stop(self):
         self.sock.close()
