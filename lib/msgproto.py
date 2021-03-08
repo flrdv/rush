@@ -5,17 +5,17 @@ FUTURE_MSG_LEN_BYTES = 4
 READ_CHUNK_SIZE = 4096
 
 
-def sendmsg(sock: socket.socket, data: bytes):
-    packet_len = len(data).to_bytes(4, 'little')
+def sendmsg(sock: socket.socket, data: bytes, msg_len_bytes=FUTURE_MSG_LEN_BYTES):
+    packet_len = len(data).to_bytes(msg_len_bytes, 'little')
 
     return sock.send(packet_len + data)
 
 
-def recvmsg(sock: socket.socket):
+def recvmsg(sock: socket.socket, msg_len_bytes=FUTURE_MSG_LEN_BYTES):
     encoded_msg_len = b''
 
-    while len(encoded_msg_len) < FUTURE_MSG_LEN_BYTES:
-        encoded_msg_len += sock.recv(FUTURE_MSG_LEN_BYTES - len(encoded_msg_len))
+    while len(encoded_msg_len) < msg_len_bytes:
+        encoded_msg_len += sock.recv(msg_len_bytes - len(encoded_msg_len))
 
     msg_len = int.from_bytes(encoded_msg_len, 'little')
 
