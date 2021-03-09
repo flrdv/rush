@@ -7,7 +7,6 @@ from lib.msgproto import recvmsg
 
 
 LOGDB = 'servers/logserver/logs.sqlite3'
-SESSIONS = {}   # conn: (ip, port)
 
 
 def init_log_db():
@@ -24,12 +23,6 @@ def add_log_entry(log_datetime, log_type, log_entry):
         cursor.execute('INSERT INTO journal VALUES (?, ?, ?)',
                        (log_datetime, log_type, log_entry))
         conn.commit()
-
-
-def new_conn_handler(_, new_conn):
-    ip, port = new_conn.getpeername()
-    SESSIONS[new_conn] = (ip, port)
-    print(f'[LOGSERVER] New connection: {ip}:{port}')
 
 
 def request_handler(_, conn):
@@ -60,18 +53,27 @@ def request_handler(_, conn):
     add_log_entry(log_datetime, log_type, log_text)
 
 
-def disconnect_handler(_, conn):
-    ip, port = SESSIONS.pop(conn)
-    print(f'[LOGSERVER] Disconnected: {ip}:{port}')
-    conn.close()
-
-
 class LogServer:
     def __init__(self, **kwargs):
         self.epoll_server = lib.epollserver.EpollServer(**kwargs)
-        self.epoll_server.add_handler(new_conn_handler, lib.epollserver.CONNECT)
+
+        self.new_conn_handler = lib.epollserver.handshake(self.new_conn_handler)
+
+        self.epoll_server.add_handler(self.new_conn_handler, lib.epollserver.CONNECT)
         self.epoll_server.add_handler(request_handler, lib.epollserver.RECEIVE)
-        self.epoll_server.add_handler(disconnect_handler, lib.epollserver.DISCONNECT)
+        self.epoll_server.add_handler(self.disconnect_handler, lib.epollserver.DISCONNECT)
+
+        self.sessions = {}  # conn: addr
+
+    def new_conn_handler(self, _, new_conn):
+        ip, port = new_conn.getpeername()
+        self.sessions[new_conn] = (ip, port)
+        print(f'[LOGSERVER] New connection: {ip}:{port}')
+
+    def disconnect_handler(self, _, conn):
+        ip, port = self.sessions.pop(conn)
+        print(f'[LOGSERVER] Disconnected: {ip}:{port}')
+        conn.close()
 
     def start(self, threaded=False):
         self.epoll_server.start(threaded=threaded)
