@@ -8,10 +8,11 @@ Road-to-the-release components' progress:
   - Resolver: done
   - Resolver api: done
   - Log server: done (untested)
-  - Log server api: in progress (waiting for auto re-connecting)
-  - Cluster server: not started
+  - Log server api: done (but I'm not sure, most of all, will be rewritten later)
+  - Cluster server: done (untested)
   - Endpoint client: not started
-  - Main server core: in progress
+  - Main server core: done (untested)
+  - Main server (simple sockets wrapper): done (untested)
   - Main server (http wrapper): not started
   - Epoll Server Lib (lib.epollserver): done
   - Dumb User Protection (lib.epollserver.handshake, lib.epollserver.do_handshake): done
