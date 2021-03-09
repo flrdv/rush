@@ -55,6 +55,9 @@ class NodesManager:
 
         self._active = True
 
+        # another way to decorate function, but only for instance method
+        self.conns_handler = lib.epollserver.handshake(name)
+
         epollserver.add_handler(self.conns_handler, lib.epollserver.CONNECT)
         epollserver.add_handler(self.request_handler, lib.epollserver.RECEIVE)
 
