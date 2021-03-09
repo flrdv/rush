@@ -1,6 +1,7 @@
 from socket import socket
-from threading import Thread
 from time import time, sleep
+from threading import Thread
+from json import load, JSONDecodeError
 
 from lib import epollserver
 from lib import periodic_events
@@ -13,11 +14,13 @@ REQUEST = b'\x96'
 
 
 class Cluster:
-    def __init__(self, name='cluster', addr=('localhost', 0),
-                 disconnect_endpoints_if_not_responding=True,
+    def __init__(self, profile=None, name='cluster', addr=('localhost', 0),
+                 filter_=None, disconnect_endpoints_if_not_responding=True,
                  endpoint_heartbeat_packets_timeout=1, mainserver_heartbeat_packets_timeout=.5,
                  resolver_addr=('localhost', 11100), main_server_name='mainserver'):
+        self.profile = profile
         self.name = name
+        self.filter = filter_ or {}
         self.disconnect_endpoints_if_not_responding = disconnect_endpoints_if_not_responding
         self.endpoint_heartbeat_packets_timeout = endpoint_heartbeat_packets_timeout
         self.mainserver_heartbeat_packets_timeout = mainserver_heartbeat_packets_timeout
@@ -45,10 +48,10 @@ class Cluster:
 
         ip, port = conn.getpeername()
         raw_load = conn.recv(1)
-        load = int.from_bytes(raw_load, 'little')
+        cpu_load = int.from_bytes(raw_load, 'little')
         current_time = time()
-        self.endpoint_connections[conn][1:3] = [load, current_time]
-        print(f'[CLUSTER] [{current_time}] {ip}:{port}: {load}%')
+        self.endpoint_connections[conn][1:3] = [cpu_load, current_time]
+        print(f'[CLUSTER] [{current_time}] {ip}:{port}: {cpu_load}%')
 
     def mainserver_requests_handler(self):
         """
@@ -103,27 +106,47 @@ class Cluster:
         endpoint_with_minimal_load.send(REQUEST)
         sendmsg(endpoint_with_minimal_load, request)
 
+    def load_profile(self):
+        try:
+            with open(self.profile) as fd:
+                variables = load(fd)
+        except (ValueError, JSONDecodeError, FileNotFoundError):
+            print(f'[CLUSTER] Failed to load profile: {self.profile} (it doesn\'t exists or corrupted)')
+
+            return
+
+        if not isinstance(variables, dict):
+            return print(f'[CLUSTER] Failed to load profile: {self.profile} (bad configuration)')
+
+        print(f'[CLUSTER] Applying profile: {self.profile}')
+        for var, val in variables.items():
+            print(f'[CLUSTER] Setting: {var}={repr(val)}')
+            setattr(self, var, val)
+
     def start(self):
+        if self.profile:
+            self.load_profile()
+
         print('[CLUSTER] Getting main server address...')
-
         resolver_api = ResolverApi(self.resolver_addr)
-
         ip, port = resolver_api.get_main_server(self.mainserver_name)
         print(f'[CLUSTER] Main server address: {ip}:{port}')
 
         self.mainserver_conn.connect((ip, port))
+        epollserver.do_handshake(self.mainserver_conn, self.mainserver_name)
         print('[CLUSTER] Connected to the main server')
-
-        periodic_events_executor = periodic_events.PeriodicEventsExecutor()
-        periodic_events_executor.add_event(self.endpoint_heartbeat_packets_timeout,
-                                           self.endpoints_heartbeat_manager)
-        print('[CLUSTER] Added periodic event: endpoints heartbeat manager '
-              f'(timeout: {self.endpoint_heartbeat_packets_timeout})')
 
         mainserver_requests_handler_thread = Thread(target=self.mainserver_requests_handler)
         mainserver_requests_handler_thread.start()
         print('[CLUSTER] Started main server requests handler thread '
               f'({mainserver_requests_handler_thread.ident})')
+
+        periodic_events_executor = periodic_events.PeriodicEventsExecutor()
+        periodic_events_executor.add_event(self.endpoint_heartbeat_packets_timeout,
+                                           self.endpoints_heartbeat_manager)
+        periodic_events_executor.start()
+        print('[CLUSTER] Added periodic event: endpoints heartbeat manager '
+              f'(timeout: {self.endpoint_heartbeat_packets_timeout})')
 
         self.endpoints_epollserver.start(threaded=True)
         print('[CLUSTER] Started server for endpoints')
