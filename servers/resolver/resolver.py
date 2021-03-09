@@ -116,6 +116,7 @@ def parse_request_to_custom_server(name):
 class Resolver:
     def __init__(self, addr=('localhost', 11100), maxconns=0):
         self.epoll_server = lib.epollserver.EpollServer(addr, maxconns=maxconns)
+        self.conn_handler = lib.epollserver.handshake('resolver')
         self.epoll_server.add_handler(self.conn_handler, lib.epollserver.CONNECT)
         self.epoll_server.add_handler(self.request_handler, lib.epollserver.RECEIVE)
         self.epoll_server.add_handler(self.disconnect_handler, lib.epollserver.DISCONNECT)
