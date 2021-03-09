@@ -1,10 +1,27 @@
+from threading import Thread
+
 import servers.resolver.resolver
-from cli_utils import run_as_daemon
 
 
-def start_resolver(ip='localhost', port=11100):
-    resolver = servers.cluster_resolver.resolver.Resolver(addr=(ip, port))
-    run_as_daemon.run_function(resolver.run_blocking_handler)
+def _parse_addr(addr):
+    ip, port = addr.split(':')
+
+    return ip, int(port)
+
+
+def start_resolver(addr=('localhost', 11100), daemon=False):
+    if isinstance(addr, str):
+        ip, port = _parse_addr(addr)
+    else:
+        ip, port = addr
+
+    resolver = servers.resolver.resolver.Resolver(addr=(ip, port))
+
+    if not daemon:
+        return resolver.start(threaded=False)
+
+    Thread(target=resolver.start, kwargs={'threaded': False}, daemon=True).start()
+    print('[RUSH-CLI] Resolver has been started on')
 
 
 aliases = {
