@@ -1,31 +1,40 @@
-from sys import argv, exit
+import argparse
+from sys import exit
+from platform import system
 
 from cli_utils import commands
 
 
-HELP_FILE = 'cli_utils/help.txt'
+def get_kwargs_from_argparse_namespace(namespace, none_as_null=True, ignore=()):
+    kwargs = {}
 
+    for var, val in namespace._get_kwargs():
+        if (val is None and none_as_null) or var in ignore:
+            continue
 
-def get_help_text(from_file=HELP_FILE):
-    try:
-        with open(from_file) as fd:
-            return fd.read()
-    except FileNotFoundError:
-        return '<no help provided, looks like file does not exists>'
+        kwargs[var] = val
+
+    return kwargs
 
 
 if __name__ == '__main__':
-    args = argv[1:]
-
-    if len(args) < 1:
-        print(get_help_text())
-        exit()
-
-    handler, *handler_args = args
-    handler_func = commands.aliases.get(handler)
-
-    if handler_func is None:
-        print('[RUSH-CLI] No such command:', handler)
+    if system() != 'Linux':
+        print('[RUSH-CLI] Rush webserver is available only for Linux '
+              f'but using {system()} instead')
         exit(1)
 
-    handler_func()
+    arguments_parser = argparse.ArgumentParser(description='CLI for Rush-webserver')
+    arguments_parser.add_argument('cmd', metavar='command')
+    arguments_parser.add_argument('--addr')
+    arguments_parser.add_argument('--daemon', default=True, type=bool)
+    arguments_parser.add_argument('--profile')
+
+    parsed = arguments_parser.parse_args()
+    handler = commands.aliases.get(parsed.cmd)
+
+    if handler is None:
+        print('[RUSH-CLI] No command is provided. Type --help to get help about cli')
+        exit(1)
+
+    handler_kwargs = get_kwargs_from_argparse_namespace(parsed, ignore=('cmd',))
+    handler(**handler_kwargs)
