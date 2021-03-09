@@ -2,6 +2,7 @@ import socket
 from time import sleep
 from json import loads, dumps
 
+from lib.epollserver import do_handshake
 from lib.msgproto import sendmsg, recvmsg
 
 WRITE = b'\x00'
@@ -24,10 +25,18 @@ class ResolverApi:
         self.wait_for_resolver = wait_for_resolver
         self.sock = socket.socket()
 
+        self._connected = False
+
     def connect(self):
         while True:
             try:
                 self.sock.connect(self.addr)
+
+                if not do_handshake(self.sock, 'resolver'):
+                    print('[RESOLVER-API] Failed to connect to resolver: handshake failure')
+
+                    return False
+
                 break
             except (ConnectionResetError, ConnectionRefusedError) as exc:
                 print('[RESOLVER-API] Failed to connect to the resolver:', exc)
@@ -37,10 +46,15 @@ class ResolverApi:
 
             sleep(1)
 
+        self._connected = True
+
         return True
 
     def request(self, request_type: bytes, data: bytes,
                 wait_response: bool = True, jsonify_resposne: bool = True):
+        if not self._connected:
+            raise RuntimeError('not connected to resolver')
+
         sendmsg(self.sock, request_type + data)
 
         if wait_response:
@@ -130,6 +144,7 @@ class ResolverApi:
 
     def stop(self):
         self.sock.close()
+        self._connected = False
 
     def __del__(self):
         self.stop()
