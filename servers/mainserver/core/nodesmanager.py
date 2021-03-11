@@ -5,11 +5,11 @@ from json import loads, dumps, JSONDecodeError
 
 import lib.epollserver
 import lib.periodic_events
-from lib.msgproto import sendmsg, recvmsg
+from lib.msgproto import sendmsg, recvmsg, recvbytes
 from servers.resolver.resolver_api import ResolverApi
 
 
-ENDPOINT = 0
+HANDLER = 0
 CLUSTER = 1
 HEARTBEAT = b'\x69'
 UPDATE = b'\x96'
@@ -51,7 +51,7 @@ class NodesManager:
         self.resolver_addr = resolver_addr
 
         self.clusters = {}   # conn: name, filter, last_heartbeat_packet_received_at
-        self.endpoints = []  # contains conn objects to endpoints
+        self.handlers = []   # contains conn objects to handlers
 
         self._active = True
 
@@ -65,28 +65,35 @@ class NodesManager:
         """
         after handshake, we receive 1 byte from node to get know
         who is he:
-            b'\x00' - endpoint
+            b'\x00' - handler
             b'\x01' - cluster
 
-        if it's endpoint, we don't care and pass it.
+        if it's handler, we don't care and pass it.
         if it's cluster, we receive one more packet from client
         this packet is a json, like:
          <2 bytes: length of the name of cluster in bytes><name of cluster><filter>
         """
         ip, port = conn.getpeername()
-        type_of_connected_guy = conn.recv(1)
 
-        if type_of_connected_guy == ENDPOINT:
-            print(f'[MAINSERVER] Endpoint connected: {ip}:{port}')
-            self.endpoints.append(conn)
+        # receive 1 byte with timeout of 1 second
+        type_of_connected_guy = recvbytes(conn, 1, 1)
+
+        if type_of_connected_guy is None:
+            print(f'[MAINSERVER] Connection failure from {ip}:{port}: '
+                  'haven\'t received type of connected node')
+
+            return lib.epollserver.DENY_CONN
+        elif type_of_connected_guy == HANDLER:
+            print(f'[MAINSERVER] Handler connected: {ip}:{port}')
+            self.handlers.append(conn)
         elif type_of_connected_guy == CLUSTER:
             print(f'[MAINSERVER] Cluster connected: {ip}:{port}')
 
             if not self.manage_cluster_info(conn):
                 return lib.epollserver.DENY_CONN
         else:
-            print(f'[MAINSERVER] Received unknown identifier from {ip}:{port}: {bytes([type_of_connected_guy])}')
-            conn.close()
+            print(f'[MAINSERVER] Received unknown identifier from {ip}:{port}:',
+                  bytes([type_of_connected_guy]))
 
             return lib.epollserver.DENY_CONN
 
@@ -106,12 +113,16 @@ class NodesManager:
             after that, he receives full packet using lib.msgproto
         """
 
-        raw = recvmsg(conn)
+        raw = recvmsg(conn, timeout=1)
 
         if raw == b'':
-            print(f'[MAINSERVER] Connection failure: disconnected while receiving initial packet')
+            print('[MAINSERVER] Connection failure: disconnected while receiving initial packet')
 
-            return
+            return False
+        elif raw is None:
+            print('[MAINSERVER] Connection failure: didn\'t receive initial packet for 1 second')
+
+            return False
 
         ip, port = conn.getpeername()
 
@@ -136,17 +147,20 @@ class NodesManager:
     def request_handler(self, _, conn):
         ip, port = conn.getpeername()
 
-        if conn in self.endpoints:
-            # response from endpoint
-            response: list = loads(recvmsg(conn))
+        if conn in self.handlers:
+            # response from handler
+            response: list = loads(recvmsg(conn), timeout=1)
 
-            if len(response) != 2:
-                return print('[MAINSERVER] Received bad packet from endpoint: '
+            if response is None:
+                return print('[MAINSERVER] Didn\'t receive response from handler: '
+                             'timeout reached (1 second)')
+            elif len(response) != 2:
+                return print('[MAINSERVER] Received bad packet from handler: '
                              f'{ip}:{port} as a response to {response[0]}')
 
             response_to, response_body = response
 
-            print(f'[MAINSERVER] Received response for {response_to} from endpoint {ip}:{port}')
+            print(f'[MAINSERVER] Received response for {response_to} from handler {ip}:{port}')
 
             if self.callback is None:
                 return print(f'[MAINSERVER] Unable to response client: no callback function specified')
@@ -186,7 +200,9 @@ class NodesManager:
                         self.disconnect_cluster(conn)
 
     def disconnect_cluster(self, conn):
-        conn.close()
+        # conn.close() - now it's not required,
+        # lib.epollserver will close it anyway
+        # oh, what a great lib!..
         self.clusters.pop(conn)
 
     def start(self, threaded=True):
