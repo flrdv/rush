@@ -108,6 +108,8 @@ class EpollServer:
 
                     if handler(CONNECT, conn) == DENY_CONN:
                         # connection hasn't been accepted
+                        # nothing will happen if we'll close closed socket
+                        conn.close()
                         continue
 
                     conn.setblocking(False)
@@ -118,6 +120,10 @@ class EpollServer:
                     self.epoll.unregister(fileno)
                     conn = self.conns.pop(fileno)
                     handler(DISCONNECT, conn)
+
+                    # as I said before, nothing will happen if
+                    # we'll close already closed socket
+                    conn.close()
                 else:
                     handler(event_type, self.conns[fileno])
 
