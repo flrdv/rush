@@ -33,5 +33,11 @@ class PeriodicEventsExecutor:
         return self
 
     def start(self):
+        """
+        Start all the events. Has to be called after every adding events
+        """
+
         for event in self.events:
             event.start(threaded=True)
+
+        self.events.clear()
