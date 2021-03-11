@@ -11,7 +11,8 @@ def sendmsg(sock: socket.socket, data: bytes, msg_len_bytes=FUTURE_MSG_LEN_BYTES
     return sock.send(packet_len + data)
 
 
-def recvmsg(sock: socket.socket, msg_len_bytes=FUTURE_MSG_LEN_BYTES):
+def recvmsg(sock: socket.socket, msg_len_bytes=FUTURE_MSG_LEN_BYTES,
+            timeout=None):
     encoded_msg_len = b''
 
     while len(encoded_msg_len) < msg_len_bytes:
@@ -19,17 +20,24 @@ def recvmsg(sock: socket.socket, msg_len_bytes=FUTURE_MSG_LEN_BYTES):
 
     msg_len = int.from_bytes(encoded_msg_len, 'little')
 
-    return recvbytes(sock, msg_len)
+    return recvbytes(sock, msg_len, timeout)
 
 
-def recvbytes(sock, bytescount):
+def recvbytes(sock, bytescount, timeout):
+    old_timeout = sock.gettimeout()
+    sock.settimeout(timeout)
     source = b''
     bytes_received = 0
 
-    while bytes_received < bytescount:
-        received = sock.recv(bytescount - len(source))
-        bytes_received += len(received)
+    try:
+        while bytes_received < bytescount:
+            received = sock.recv(bytescount - len(source))
+            bytes_received += len(received)
 
-        source += received
+            source += received
+    except socket.timeout:
+        source = None
+
+    sock.settimeout(old_timeout)
 
     return source
