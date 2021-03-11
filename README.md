@@ -20,4 +20,4 @@ Road-to-the-release components' progress:
   - Messages Delivering protocol (lib.msgproto): done
 
   TODO: 
-    - Make lib.epollserver asynchronius (as a result, make mainserver core and cluster asynchronius, too)
+  - Make lib.epollserver asynchronius (as a result, make mainserver core and cluster asynchronius, too)
