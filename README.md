@@ -18,3 +18,6 @@ Road-to-the-release components' progress:
   - Dumb User Protection (lib.epollserver.handshake, lib.epollserver.do_handshake): done
   - Periodic Events Lib (lib.periodic_events): done
   - Messages Delivering protocol (lib.msgproto): done
+
+  TODO: 
+    - Make lib.epollserver asynchronius (as a result, make mainserver core and cluster asynchronius, too)
