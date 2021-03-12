@@ -21,3 +21,8 @@ Road-to-the-release components' progress:
 
   TODO: 
   - Make lib.epollserver asynchronius (as a result, make mainserver core and cluster asynchronius, too)
+
+Branches:
+  - master - main branch where all the features appear first
+  - async - branch where I'm trying to make lib.epollserver (and as a result - almost the whole project) asynchronous
+  - release-x.x.x - releases of webserver
