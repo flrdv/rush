@@ -11,15 +11,14 @@ def _parse_request(raw):
 
 
 class SimpleSocketMainServer:
-    def __init__(self):
-        self.epollserver = epollserver.EpollServer(('localhost', 8080))
+    def __init__(self, addr=('localhost', 8080)):
+        self.epollserver = epollserver.EpollServer(addr)
         self.connections = {}   # ip: conn
         self.mainserver_core = nodesmanager.NodesManager(callback=self.response_client)
 
         self.epollserver.add_handler(self.client_conn_handler, epollserver.CONNECT)
         self.epollserver.add_handler(self.client_request_handler, epollserver.RECEIVE)
         self.epollserver.add_handler(self.client_disconnect_handler, epollserver.DISCONNECT)
-        self.epollserver.start()
 
     def response_client(self, response_to, response_body):
         conn = self.connections[response_to]
@@ -40,16 +39,25 @@ class SimpleSocketMainServer:
 
         print('[SimpleSocketMainServer] Disconnected:', client_address)
 
+    def start(self):
+        self.mainserver_core.start()
+        self.epollserver.start()
+
     def _get_ip_by_conn_obj(self, conn_obj):
         for address, conn in self.connections.items():
             if conn == conn_obj:
                 return address
 
 
-if __name__ == '__main__':
+def start(addr=('localhost', 8080)):
     try:
-        server = SimpleSocketMainServer()
+        server = SimpleSocketMainServer(addr=addr)
+        server.start()
     except Exception as exc:
         print('[SimpleSocketMainServer] An error occurred:', exc)
-        print('Full traceback text:')
+        print('[SimpleSocketMainServer] Full traceback text:')
         print(format_exc())
+
+
+if __name__ == '__main__':
+    start()
