@@ -24,7 +24,7 @@ def start_resolver(addr='localhost:11100', daemon=False):
 
 def start_mainserver(addr='localhost:0', daemon=False, file=None):
     if file is None:
-        print('[RUSH-CLI] File not specified')
+        return print('[RUSH-CLI] File not specified')
 
     ip, port = _parse_addr(addr)
 
@@ -40,9 +40,9 @@ def start_mainserver(addr='localhost:0', daemon=False, file=None):
         return
 
     if not daemon:
-        return mainserver.start()
+        return mainserver.start((ip, port))
 
-    Thread(target=mainserver.start).start()
+    Thread(target=mainserver.start, args=((ip, port),)).start()
 
 
 def start_cluster(addr='localhost:0', daemon=False, profile=None):
