@@ -8,50 +8,62 @@ from lib import periodic_events
 from lib.msgproto import sendmsg, recvmsg
 from servers.resolver.resolver_api import ResolverApi
 
-
 HEARTBEAT = b'\x69'
 REQUEST = b'\x96'
 
 
 class Cluster:
     def __init__(self, profile=None, name='cluster', addr=('localhost', 0),
-                 filter_=None, disconnect_endpoints_if_not_responding=True,
-                 endpoint_heartbeat_packets_timeout=1, mainserver_heartbeat_packets_timeout=.5,
+                 filter_=None, disconnect_handlers_if_not_responding=True,
+                 handler_heartbeat_packets_timeout=1, mainserver_heartbeat_packets_timeout=.5,
                  resolver_addr=('localhost', 11100), main_server_name='mainserver'):
         self.profile = profile
         self.name = name
         self.filter = filter_ or {}
-        self.disconnect_endpoints_if_not_responding = disconnect_endpoints_if_not_responding
-        self.endpoint_heartbeat_packets_timeout = endpoint_heartbeat_packets_timeout
+        self.disconnect_handlers_if_not_responding = disconnect_handlers_if_not_responding
+        self.handler_heartbeat_packets_timeout = handler_heartbeat_packets_timeout
         self.mainserver_heartbeat_packets_timeout = mainserver_heartbeat_packets_timeout
         self.resolver_addr = resolver_addr
         self.mainserver_name = main_server_name
 
-        self.endpoint_connections = {}   # conn: [addr, cpu_load, last_heartbeat_packet_received_at]
+        self.handler_connections = {}  # conn: [addr, cpu_load, last_heartbeat_packet_received_at]
         self.mainserver_conn = socket()  # we'll connect later, in start() method
-        self.endpoints_epollserver = epollserver.EpollServer(addr=addr)
+        self.handlers_epollserver = epollserver.EpollServer(addr=addr)
+
+        self.handlers_connection_handler = epollserver.handshake(name) \
+            (self.handlers_connection_handler)
+
+        self.handlers_epollserver.add_handler(self.handlers_connection_handler,
+                                              epollserver.CONNECT)
+        self.handlers_epollserver.add_handler(self.handlers_requests_handler,
+                                              epollserver.RECEIVE)
+        self.handlers_epollserver.add_handler(self.handlers_disconnect_handler,
+                                              epollserver.DISCONNECT)
 
         self._started = False
 
-    def endpoints_connection_handler(self, _, conn):
+    def handlers_connection_handler(self, _, conn):
         ip, port = conn.getpeername()
-        self.endpoint_connections[conn] = [(ip, port), 100, time()]
+        self.handler_connections[conn] = [(ip, port), 100, time()]
 
         print(f'[CLUSTER] New connection from {ip}:{port}')
 
-    def endpoints_requests_handler(self, _, conn):
+    def handlers_requests_handler(self, _, conn):
         """
-        Endpoint's machine load update is our heartbeat packet
-        Endpoints sends to cluster single byte that is converting
-        to integer and means endpoint's machine load
+        handler's machine load update is our heartbeat packet
+        handlers sends to cluster single byte that is converting
+        to integer and means handler's machine load
         """
 
         ip, port = conn.getpeername()
         raw_load = conn.recv(1)
         cpu_load = int.from_bytes(raw_load, 'little')
         current_time = time()
-        self.endpoint_connections[conn][1:3] = [cpu_load, current_time]
+        self.handler_connections[conn][1:3] = [cpu_load, current_time]
         print(f'[CLUSTER] [{current_time}] {ip}:{port}: {cpu_load}%')
+
+    def handlers_disconnect_handler(self, _, conn):
+        self.disconnect_handler(conn)
 
     def mainserver_requests_handler(self):
         """
@@ -75,43 +87,48 @@ class Cluster:
                 request = recvmsg(self.mainserver_conn)
                 self.send_update(request)
 
-    def endpoints_heartbeat_manager(self):
+    def handlers_heartbeat_manager(self):
         """
         Periodic-event based function
 
-        Using it to disconnect all the endpoints for the which
+        Using it to disconnect all the handlers for the which
         ones we haven't received heartbeat packets for
         self.heartbeat_packets_timeout seconds
         """
 
         current_time = time()
 
-        for conn, (_, _, last_heartbeat_packet_received_at) in self.endpoint_connections.items():
-            if current_time - last_heartbeat_packet_received_at > self.endpoint_heartbeat_packets_timeout:
+        for conn, (_, _, last_heartbeat_packet_received_at) in self.handler_connections.items():
+            if current_time - last_heartbeat_packet_received_at > self.handler_heartbeat_packets_timeout:
                 ip, port = conn.getpeername()
-                print(f'[CLUSTER] Endpoint {ip}:{port} does not responding (haven\'t '
+                print(f'[CLUSTER] handler {ip}:{port} does not responding (haven\'t '
                       'received heartbeat-packets for more than '
-                      f'{self.endpoint_heartbeat_packets_timeout} seconds)')
+                      f'{self.handler_heartbeat_packets_timeout} seconds)')
 
-                if self.disconnect_endpoints_if_not_responding:
-                    self.disconnect_endpoint(conn)
+                if self.disconnect_handlers_if_not_responding:
+                    self.disconnect_handler(conn)
 
-    def disconnect_endpoint(self, conn):
-        self.endpoint_connections.pop(conn)
+    def disconnect_handler(self, conn):
+        ip, port = self.handler_connections[conn][0]
+
+        self.handler_connections.pop(conn)
         conn.close()
 
+        print(f'[CLUSTER] Disconnected handler: {ip}:{port}')
+
     def send_update(self, request):
-        endpoint_with_minimal_load = min(self.endpoint_connections,
-                                         key=lambda key: self.endpoint_connections[key][1])
-        endpoint_with_minimal_load.send(REQUEST)
-        sendmsg(endpoint_with_minimal_load, request)
+        handler_with_minimal_load = min(self.handler_connections,
+                                        key=lambda key: self.handler_connections[key][1])
+        handler_with_minimal_load.send(REQUEST)
+        sendmsg(handler_with_minimal_load, request)
 
     def load_profile(self):
         try:
             with open(self.profile) as fd:
                 variables = load(fd)
         except (ValueError, JSONDecodeError, FileNotFoundError):
-            print(f'[CLUSTER] Failed to load profile: {self.profile} (it doesn\'t exists or corrupted)')
+            print(f'[CLUSTER] Failed to load profile: {self.profile} (it doesn\'t '
+                  'exists or corrupted)')
 
             return
 
@@ -142,17 +159,17 @@ class Cluster:
               f'({mainserver_requests_handler_thread.ident})')
 
         periodic_events_executor = periodic_events.PeriodicEventsExecutor()
-        periodic_events_executor.add_event(self.endpoint_heartbeat_packets_timeout,
-                                           self.endpoints_heartbeat_manager)
+        periodic_events_executor.add_event(self.handler_heartbeat_packets_timeout,
+                                           self.handlers_heartbeat_manager)
         periodic_events_executor.start()
-        print('[CLUSTER] Added periodic event: endpoints heartbeat manager '
-              f'(timeout: {self.endpoint_heartbeat_packets_timeout})')
+        print('[CLUSTER] Added periodic event: handlers heartbeat manager '
+              f'(timeout: {self.handler_heartbeat_packets_timeout})')
 
-        self.endpoints_epollserver.start(threaded=True)
-        print('[CLUSTER] Started server for endpoints')
+        self.handlers_epollserver.start(threaded=True)
+        print('[CLUSTER] Started server for handlers')
 
         print('[CLUSTER] Telling resolver cluster\'s address...')
-        resolver_api.add_cluster(self.name, self.endpoints_epollserver.addr)
+        resolver_api.add_cluster(self.name, self.handlers_epollserver.addr)
         print('[CLUSTER] Done')
 
         resolver_api.stop()
