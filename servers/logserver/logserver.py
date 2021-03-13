@@ -54,10 +54,10 @@ def request_handler(_, conn):
 
 
 class LogServer:
-    def __init__(self, **kwargs):
+    def __init__(self, name='logserver', **kwargs):
         self.epoll_server = lib.epollserver.EpollServer(**kwargs)
 
-        self.new_conn_handler = lib.epollserver.handshake(self.new_conn_handler)
+        self.new_conn_handler = lib.epollserver.handshake(name)(self.new_conn_handler)
 
         self.epoll_server.add_handler(self.new_conn_handler, lib.epollserver.CONNECT)
         self.epoll_server.add_handler(request_handler, lib.epollserver.RECEIVE)
