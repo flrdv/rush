@@ -23,7 +23,7 @@ def recvmsg(sock: socket.socket, msg_len_bytes=FUTURE_MSG_LEN_BYTES,
     return recvbytes(sock, msg_len, timeout)
 
 
-def recvbytes(sock, bytescount, timeout):
+def recvbytes(sock, bytescount, timeout=None):
     old_timeout = sock.gettimeout()
     sock.settimeout(timeout)
     source = b''
