@@ -1,5 +1,5 @@
 import argparse
-from sys import exit
+from sys import exit, argv
 from platform import system
 
 from cli_utils import commands
@@ -17,7 +17,7 @@ def get_kwargs_from_argparse_namespace(namespace, none_as_null=True, ignore=()):
     return kwargs
 
 
-if __name__ == '__main__':
+def run_cmd(cmd):
     if system() != 'Linux':
         print('[RUSH-CLI] Rush webserver is available only for Linux '
               f'but using {system()} instead')
@@ -29,7 +29,7 @@ if __name__ == '__main__':
     arguments_parser.add_argument('--daemon', default=True, type=bool)
     arguments_parser.add_argument('--profile')
 
-    parsed = arguments_parser.parse_args()
+    parsed = arguments_parser.parse_args(cmd)
     handler = commands.aliases.get(parsed.cmd)
 
     if handler is None:
@@ -38,3 +38,7 @@ if __name__ == '__main__':
 
     handler_kwargs = get_kwargs_from_argparse_namespace(parsed, ignore=('cmd',))
     handler(**handler_kwargs)
+
+
+if __name__ == '__main__':
+    run_cmd(argv[1:])
