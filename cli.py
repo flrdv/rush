@@ -28,6 +28,7 @@ def run_cmd(cmd):
     arguments_parser.add_argument('--addr')
     arguments_parser.add_argument('--daemon', default=True, type=bool)
     arguments_parser.add_argument('--profile')
+    arguments_parser.add_argument('--file')
 
     parsed = arguments_parser.parse_args(cmd)
     handler = commands.aliases.get(parsed.cmd)
