@@ -26,7 +26,7 @@ def run_cmd(cmd):
     arguments_parser = argparse.ArgumentParser(description='CLI for Rush-webserver')
     arguments_parser.add_argument('cmd', metavar='command')
     arguments_parser.add_argument('--addr')
-    arguments_parser.add_argument('--daemon', default=True, type=bool)
+    arguments_parser.add_argument('--daemon', default=False, type=bool)
     arguments_parser.add_argument('--profile')
     arguments_parser.add_argument('--file')
 
@@ -38,7 +38,11 @@ def run_cmd(cmd):
         exit(1)
 
     handler_kwargs = get_kwargs_from_argparse_namespace(parsed, ignore=('cmd',))
-    handler(**handler_kwargs)
+
+    try:
+        handler(**handler_kwargs)
+    except TypeError:
+        print('[RUSH-CLI] Got an unexpected argument')
 
 
 if __name__ == '__main__':
