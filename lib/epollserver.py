@@ -64,7 +64,7 @@ class EpollServer:
         self.server_sock.bind(addr)
         self.server_sock.listen(maxconns)
         self.server_sock.setblocking(False)
-        self.addr = self.server_sock.getpeername()
+        self.addr = self.server_sock.getsockname()
 
         self._running = False
         self.conns = {}
