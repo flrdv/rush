@@ -34,6 +34,8 @@ class ResolverApi:
 
                 if not do_handshake(self.sock, 'resolver'):
                     print('[RESOLVER-API] Failed to connect to resolver: handshake failure')
+                    self.sock.close()
+                    self.sock = socket.socket()
 
                     return False
 
