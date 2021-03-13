@@ -50,13 +50,13 @@ class NodesManager:
         self.disconnect_unresponding_clusters = disconnect_unresponding_clusters
         self.resolver_addr = resolver_addr
 
-        self.clusters = {}   # conn: name, filter, last_heartbeat_packet_received_at
+        self.clusters = {}   # conn: addr, name, filter, last_heartbeat_packet_received_at
         self.handlers = []   # contains conn objects to handlers
 
         self._active = True
 
         # another way to decorate function, but only for instance method
-        self.conns_handler = lib.epollserver.handshake(name)
+        self.conns_handler = lib.epollserver.handshake(name)(self.conns_handler)
 
         epollserver.add_handler(self.conns_handler, lib.epollserver.CONNECT)
         epollserver.add_handler(self.request_handler, lib.epollserver.RECEIVE)
@@ -140,7 +140,7 @@ class NodesManager:
 
         name, requests_filter = jsonified
         requests_filter = loads(requests_filter)
-        self.clusters[conn] = [name, requests_filter, time()]
+        self.clusters[conn] = [(ip, port), name, requests_filter, time()]
 
         return True
 
@@ -163,15 +163,16 @@ class NodesManager:
             print(f'[MAINSERVER] Received response for {response_to} from handler {ip}:{port}')
 
             if self.callback is None:
-                return print(f'[MAINSERVER] Unable to response client: no callback function specified')
+                return print('[MAINSERVER] Unable to response client: no callback '
+                             'function specified')
 
             self.callback(response_to, response_body)
         else:   # heartbeat-packet from cluster
-            self.clusters[conn][2] = time()  # update cluster_last_heartbeat_received_at
+            self.clusters[conn][3] = time()  # update cluster_last_heartbeat_received_at
             conn.send(HEARTBEAT)             # response with a heartbeat packet
 
     def send_request(self, request):
-        for conn, (name, filter_, _) in self.clusters.items():
+        for conn, (_, name, filter_, _) in self.clusters.items():
             if compare_filters(filter_, request):
                 conn.send(UPDATE)
                 sendmsg(conn, dumps(request).encode())
@@ -189,12 +190,11 @@ class NodesManager:
             sleep(self.heartbeat_packets_timeout)
             current_time = time()
 
-            for conn, (name, filter_, last_heartbeat_packet_received_at) in self.clusters.items():
-                if current_time - last_heartbeat_packet_received_at > self.heartbeat_packets_timeout:
-                    ip, port = conn.getpeername()
-                    print(f'[MAINSERVER] Cluster {ip}:{port} does not responding (haven\'t'
-                          ' received heartbeat-packets for more than'
-                          f' {self.heartbeat_packets_timeout} seconds)')
+            for conn, ((ip, port), name, filter_, last_hb) in self.clusters.items():
+                if current_time - last_hb > self.heartbeat_packets_timeout:
+                    print(f'[MAINSERVER] Cluster {ip}:{port} does not responding (haven\'t '
+                          'received heartbeat-packets for more than '
+                          f'{self.heartbeat_packets_timeout} seconds)')
 
                     if self.disconnect_unresponding_clusters:
                         self.disconnect_cluster(conn)
@@ -203,7 +203,10 @@ class NodesManager:
         # conn.close() - now it's not required,
         # lib.epollserver will close it anyway
         # oh, what a great lib!..
+        ip, port = self.clusters[conn][0]
         self.clusters.pop(conn)
+
+        print(f'[MAINSERVER] Disconnected cluster: {ip}:{port}')
 
     def start(self, threaded=True):
         heartbeat_manager_thread = Thread(target=self.heartbeat_manager)
