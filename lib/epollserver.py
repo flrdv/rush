@@ -15,7 +15,8 @@ there are 4 types of events:
     RECEIVE - on receiving some data
     RESPONSE - on sending data
     
-to handle the events, you need to have a function that receives only 2 arguments - event_type and conn
+to handle the events, you need to have a function that 
+receives only 2 arguments - event_type and conn
 conn is a object of connection (logic) with some events
 event_type is integer to compare with lib's constants
 
@@ -35,10 +36,15 @@ def connect_handler(_, conn):
     
     # return epollserver.DENY_CONN - if connection shouldn't be processed and
     # registered in epoll. Use it if you deny connection
+    # also False may be returned and make the same effect
     
 
 # OR
 epoll_server.add_handler(connect_handler, on_event=epollserver.CONNECT)
+
+# and run it (in blocking mode, if option "threaded"
+# is set to False (by default)
+epoll_server.start()
 ```
 
 default value of on_event is all (built-in name, yes, but it sounds cool)
@@ -106,7 +112,7 @@ class EpollServer:
                 if event_type == CONNECT:
                     conn, addr = self.server_sock.accept()
 
-                    if handler(CONNECT, conn) == DENY_CONN:
+                    if handler(CONNECT, conn) in (DENY_CONN, False):
                         # connection hasn't been accepted
                         # nothing will happen if we'll close closed socket
                         conn.close()
