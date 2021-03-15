@@ -60,3 +60,9 @@ class Server:
 
     def start(self):
         self.epoll_server.start()
+
+
+if __name__ == '__main__':
+    server = Server()
+    print('server is running')
+    server.start()
