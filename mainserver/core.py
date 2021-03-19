@@ -47,14 +47,15 @@ part 'Handlers Messages Delivering Protocol':
                 - \x42 (response):
                     - 4 bytes - length of the response
                     - 1-4294967295 bytes (4.2GB per response is current maximal response size,
-                                          may be increased in future)
+                                          may be increased in future as a flag)
 
         When server receives RECEIVE event from epoll, it is reading
         blocks from socket by n bytes (see 'class MainServerCore.__init__:block_size'
         part)
     Client Side:
         Packets:
-            - heartbeat: handler sends 2 bytes: varconstant:HEARTBEAT and it's machine's load
+            - heartbeat: handler sends 2 bytes: b'\x01' (varconstant:HEARTBEAT) and
+                         it's machine's load
                          in percent (uint integer)
             - response: client sends b'\x00' (varconstant:RESPONSE) and usual packet
                         in format lib.msgproto.fmt_packet
@@ -67,11 +68,11 @@ part 'Handler Initialization Handshake':
 
     Yes, this is kinda epollserver.handshake, but a bit modified
 
-part 'Responses Thread':
+part 'Responses Thread' (currently unused, may be implemented):
     Worker-thread that checking shared list with responses. If not
     empty - getting response_to and sends client it's response
 
-part 'Requests Thread':
+part 'Requests Thread' (currently unused, may be implemented):
     Worker-thread that checking shared list with requests. If not
     empty - thread is looking for group that belongs to request,
     and the most unloaded handler and sends request to it
@@ -85,6 +86,7 @@ part 'How Will Maximal Response Size Increased':
         - a lot as fuck (up to 2^2000TB) bytes - body
 """
 
+from json import dumps
 from socket import socket
 from typing import Dict, List
 from select import EPOLLIN, EPOLLOUT, EPOLLHUP
@@ -234,7 +236,7 @@ class CoreServer:
         for virtual_group_filter, handlers in self.virtual_groups.items():
             if virtual_group_filter(request):
                 handler = min(handlers, key=lambda _handler: _handler.load)
-                self.requests[handler.conn].append()
+                handler.send(dumps(request).encode())
 
     def start(self, threaded=True):
         ip, port = self.epoll_server.server_sock.getsockname()
