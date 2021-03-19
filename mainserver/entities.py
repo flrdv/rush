@@ -41,6 +41,8 @@ class Handler:
         self.ip, self.port = self.addr
         self.filter = filter_
 
+        self.load = 100
+
     def get_conn(self):
         return self.conn
 
@@ -52,6 +54,12 @@ class Handler:
 
     def get_addr(self):
         return self.addr
+
+    def get_load(self):
+        return self.load
+
+    def set_load(self, value):
+        self.load = value
 
 
 class HandlerInitializer:
