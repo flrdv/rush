@@ -178,6 +178,14 @@ class EpollServer:
         self.stop()
 
 
+"""
+Handshake protocol below doesn't seems to be required (using another,
+modified self-wrote version in mainserver.core)
+
+This means, code below may be removed in future
+"""
+
+
 def handshake(i_am: str):
     """
     simple decorator that implements simple handshake protocol
