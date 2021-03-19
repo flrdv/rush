@@ -61,6 +61,12 @@ class Handler:
     def set_load(self, value):
         self.load = value
 
+    def send(self, data: bytes):
+        self.conn.send(data)
+
+    def recv(self, bytescount):
+        return self.conn.recv(bytescount)
+
 
 class HandlerInitializer:
     def __init__(self, conn):
