@@ -85,7 +85,8 @@ part 'How Will Maximal Response Size Increased':
         - a lot as fuck (up to 2^2000TB) bytes - body
 """
 
-
+from socket import socket
+from typing import Dict, List
 from select import EPOLLIN, EPOLLOUT, EPOLLHUP
 
 from lib import epollserver
@@ -98,7 +99,7 @@ REQUEST = b'\x00'
 
 
 class CoreServer:
-    def __init__(self, callback, name='mainserver',
+    def __init__(self, callback, name='mainserver', addr=('localhost', 9090),
                  receive_block_size=4096, response_block_size=4096):
         self.callback = callback
         self.name = name
@@ -109,11 +110,11 @@ class CoreServer:
         self.responses = {}  # conn: [requests]
         self.responses_queue = {}
         self.waiting_for_init = {}  # conn: initializer
-        self.handlers = {}  # conn: handler-entity
+        self.handlers: Dict[socket, Handler] = {}  # conn: handler-entity
 
-        self.virtual_groups = {}    # filter: [conns]
+        self.virtual_groups: Dict[Filter, List[Handler]] = {}    # filter: [conns]
 
-        self.epoll_server = epollserver.EpollServer(('0.0.0.0', 9090))
+        self.epoll_server = epollserver.EpollServer(addr)
         self.epoll_server.add_handler(self.conn_handler, epollserver.CONNECT)
         self.epoll_server.add_handler(self.requests_handler, epollserver.RECEIVE)
         self.epoll_server.add_handler(self.disconn_handler, epollserver.DISCONNECT)
@@ -158,6 +159,7 @@ class CoreServer:
         else:
             request_cell = self.requests[conn]
             left_to_receive = request_cell[1]
+
             if not request_cell[0]:  # msg len haven't been received fully yet
                 # you may ask me, why did I do such a work for simple 4 bytes receiving
                 # If I won't do this, there is a possibility that some asshole
@@ -210,14 +212,39 @@ class CoreServer:
                 self.waiting_for_init.pop(conn)
 
                 filter_ = Filter(response)
-                self.virtual_groups[filter_] = handler_entity
+
+                if filter_ not in self.virtual_groups:
+                    self.virtual_groups[filter_] = [handler_entity]
+                else:
+                    self.virtual_groups[filter_].append(handler_entity)
+
                 handler_entity.set_filter(filter_)
             elif not response:
                 print('[MAINSERVER-CORE] Handshake failure with handler '
                       f'{handler_entity.ip}:{handler_entity.port}')
                 conn.close()
+        elif response_body[0] == HEARTBEAT:
+            handler_entity.set_load(response_body[1])
         else:
-            self.callback(handler_entity, response_body)
+            self.callback(handler_entity, response_body[1:])
 
-    def start(self):
-        self.epoll_server.start(conn_signals=(EPOLLIN | EPOLLOUT | EPOLLHUP))
+    # USER API STARTS HERE
+
+    def send_update(self, request: dict):
+        for virtual_group_filter, handlers in self.virtual_groups.items():
+            if virtual_group_filter(request):
+                handler = min(handlers, key=lambda _handler: _handler.load)
+                self.requests[handler.conn].append()
+
+    def start(self, threaded=True):
+        ip, port = self.epoll_server.server_sock.getsockname()
+
+        if not threaded:
+            # if not threaded - server will shutdown before last print
+            # but if threaded, we just call it and printing log entry
+            # right below
+            print(f'[MAINSERVER-CORE] Serving on {ip}:{port}')
+
+        self.epoll_server.start(conn_signals=(EPOLLIN | EPOLLOUT | EPOLLHUP),
+                                threaded=threaded)
+        print(f'[MAINSERVER-CORE] Serving on {ip}:{port}')
