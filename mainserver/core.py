@@ -101,7 +101,7 @@ REQUEST = b'\x00'
 
 
 class CoreServer:
-    def __init__(self, callback, name='mainserver', addr=('localhost', 9090),
+    def __init__(self, callback, name='mainserver', addr=('localhost', 10000),
                  receive_block_size=4096, response_block_size=4096):
         self.callback = callback
         self.name = name
