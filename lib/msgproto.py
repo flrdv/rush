@@ -41,3 +41,7 @@ def recvbytes(sock, bytescount, timeout=None):
     sock.settimeout(old_timeout)
 
     return source
+
+
+def fmt_packet(data):
+    return len(data).to_bytes(4, 'little') + data
