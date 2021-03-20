@@ -28,8 +28,8 @@ class Filter:
     def __init__(self, sample):
         self.sample = sample
 
-    def __call__(self, request):
-        return compare_filters(self.sample, request)
+    def __call__(self, request: list):
+        return compare_filters(self.sample, request[1])
 
 
 class Handler:
