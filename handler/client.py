@@ -1,11 +1,11 @@
 from socket import socket
 from threading import Thread
-from json import loads, dumps
 from psutil import cpu_percent
 
-from lib.msgproto import sendmsg, recvmsg
 from handler.entities import HandshakeManager
 from lib.periodic_events import PeriodicEventsExecutor
+from lib.msgproto import (sendmsg, recvmsg, recv_request,
+                          send_request)
 
 RESPONSE = b'\x00'
 HEARTBEAT = b'\x01'
@@ -69,13 +69,11 @@ class Client:
         self.callback = callback
 
         self.sock = socket()
-        self.response_to = None  # tmp var
 
     def listener(self):
         while True:
-            raw_request = recvmsg(self.sock)
-            self.response_to, request = loads(raw_request)
-            self.callback(self, request)
+            request_from, request = recv_request(self.sock)
+            self.callback(self, request_from, request)
 
     def heartbeat_manager(self):
         """
@@ -86,8 +84,8 @@ class Client:
 
     # USER API STARTS HERE
 
-    def response(self, response):
-        sendmsg(self.sock, RESPONSE + dumps([self.response_to, response]).encode())
+    def response(self, response_to, response):
+        send_request(self.sock, response_to, response)
 
     def start(self):
         ip, port = self.addr
