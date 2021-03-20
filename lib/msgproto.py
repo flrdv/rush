@@ -45,3 +45,23 @@ def recvbytes(sock, bytescount, timeout=None):
 
 def fmt_packet(data):
     return len(data).to_bytes(4, 'little') + data
+
+
+"""
+Here starts rush-specific protocol functions
+"""
+
+
+def send_request(conn, request_to: bytes, request: bytes):
+    main_packet = len(request_to).to_bytes(1, 'little') + request_to + request
+    sendmsg(conn, main_packet)
+
+
+def recv_request(conn):
+    msg = recvmsg(conn)
+
+    len_of_client_id = msg[0]
+    response_to = msg[1:len_of_client_id]
+    request = msg[len_of_client_id:]
+
+    return response_to, request
