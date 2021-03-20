@@ -58,8 +58,10 @@ def send_request(conn, request_to: bytes, request: bytes):
 
 
 def recv_request(conn):
-    msg = recvmsg(conn)
+    return parse_request(recvmsg(conn))
 
+
+def parse_request(msg):
     len_of_client_id = msg[0]
     response_to = msg[1:len_of_client_id]
     request = msg[len_of_client_id:]
