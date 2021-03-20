@@ -6,6 +6,7 @@ from lib.msgproto import sendmsg, recvmsg
 
 def send(msg: bytes):
     with socket.socket() as sock:
+        sock.settimeout(1)
         print('connecting...')
         sock.connect(('192.168.0.102', 9090))
         print('connected\nsending hello world...')
