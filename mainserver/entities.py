@@ -6,13 +6,7 @@ from lib.msgproto import sendmsg
 INITIAL_BYTES_SEQUENCE = b'\x69\x04\x02\x00'
 
 
-def compare_filters(pattern: dict or list, source: dict or list):
-    if isinstance(source, list) and isinstance(pattern, list):
-        return re.fullmatch(pattern[0], source[0]) and \
-               compare_filters(pattern[1], source[1])
-    elif isinstance(source, list):
-        source = source[1]
-
+def compare_filters(pattern: dict, source: dict):
     source_items = source.items()
 
     for key, value in pattern.items():
