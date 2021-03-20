@@ -15,9 +15,6 @@ class SimpleSocketServer:
 
         self.server_core = CoreServer(self.response)
 
-    def start(self):
-        self.server_core.start()
-
     def response(self, response_to, response_body):
         conn = self.clients[response_to]
         sendmsg(conn, response_body)
@@ -33,3 +30,11 @@ class SimpleSocketServer:
         ip = stringify_addr(conn.getpeername())
         print('New request from', ip, ':', msg)
         self.server_core.send_update([ip, msg])
+
+    def start(self):
+        self.server_core.start()
+
+
+if __name__ == '__main__':
+    server = SimpleSocketServer()
+    server.start()
