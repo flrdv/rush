@@ -6,7 +6,7 @@ from lib.msgproto import sendmsg, recvmsg
 
 
 def stringify_addr(addr):
-    return addr[0] + str(addr[1])
+    return addr[0] + ':' + str(addr[1])
 
 
 class SimpleSocketServer:
