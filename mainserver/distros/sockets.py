@@ -12,6 +12,9 @@ class SimpleSocketServer:
         self.clients = {}   # ip:port: conn
 
         self.epollserver = epollserver.EpollServer(('0.0.0.0', 9090))
+        self.epollserver.add_handler(self.conn_handler, epollserver.CONNECT)
+        self.epollserver.add_handler(self.disconn_handler, epollserver.DISCONNECT)
+        self.epollserver.add_handler(self.requests_handler, epollserver.RECEIVE)
 
         self.server_core = CoreServer(self.response, addr=('0.0.0.0', 10000))
 
@@ -32,6 +35,7 @@ class SimpleSocketServer:
         self.server_core.send_update([ip, msg])
 
     def start(self):
+        self.epollserver.start(threaded=True)
         self.server_core.start()
 
 
