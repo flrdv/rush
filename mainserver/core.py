@@ -244,6 +244,11 @@ class CoreServer:
             - n bytes - request body
         """
 
+        if not isinstance(request_from, bytes):
+            request_from = request_from.encode()
+        if not isinstance(request, bytes):
+            request = request.encode()
+
         for virtual_group_filter, handlers in self.virtual_groups.items():
             if virtual_group_filter(jsonified):
                 handler = min(handlers, key=lambda _handler: _handler.load)
