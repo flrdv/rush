@@ -22,8 +22,8 @@ class SimpleSocketServer:
         self.server_core = CoreServer(self.response, addr=('0.0.0.0', 10000))
 
     def response(self, response_to, response_body):
-        conn = self.clients_ids[response_to]
-        sendmsg(conn, base64.b64decode(response_body))
+        conn = self.clients_ids[response_to.decode()]
+        sendmsg(conn, response_body)
 
     def conn_handler(self, _, conn):
         ip = stringify_addr(conn.getpeername())
