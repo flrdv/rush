@@ -4,7 +4,7 @@ from json import loads, dumps
 from psutil import cpu_percent
 
 from lib.msgproto import sendmsg, recvmsg
-from handler.entities import Filter, HandshakeManager
+from handler.entities import HandshakeManager
 from lib.periodic_events import PeriodicEventsExecutor
 
 RESPONSE = b'\x00'
