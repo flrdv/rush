@@ -94,14 +94,13 @@ part 'How Will Maximal Response Size Increased':
         - a lot as fuck (up to 2^2000TB) bytes - body
 """
 
-from json import dumps
 from socket import socket
 from typing import Dict, List
 from select import EPOLLIN, EPOLLOUT, EPOLLHUP
 
 from lib import epollserver
-from mainserver.entities import (Filter, Handler, HandlerInitializer,
-                                 INITIAL_BYTES_SEQUENCE)
+from lib.msgproto import send_request, recv_request
+from mainserver.entities import Filter, Handler, HandlerInitializer
 
 RESPONSE = 0
 HEARTBEAT = 1
@@ -149,7 +148,7 @@ class CoreServer:
         conn.close()
 
         ip, port = self.handlers.pop(conn).get_addr()
-        print(f'[MAINSERVER-CORE] Disconnected: {ip}:{port}')
+        print(f'[MAINSERVER-CORE] Handler disconnected: {ip}:{port}')
 
     def requests_handler(self, _, conn):
         """
@@ -237,17 +236,19 @@ class CoreServer:
 
     # USER API STARTS HERE
 
-    def send_update(self, request: list):
+    def send_update(self, request_from, request, jsonified):
         """
-        Request: a list that contains 2 objects:
-            response_to - any unique id for each client
-            body - request body
+        Request: a special packet with such structure:
+            - 1 byte - length of response_to client's id
+            - 1-255 bytes - response_to client's id
+            - n bytes - request body
         """
 
         for virtual_group_filter, handlers in self.virtual_groups.items():
-            if virtual_group_filter(request):
+            if virtual_group_filter(jsonified):
                 handler = min(handlers, key=lambda _handler: _handler.load)
-                handler.send(dumps(request).encode())
+
+                return send_request(handler.conn, request_from, request)
 
     def start(self, threaded=True):
         ip, port = self.epoll_server.server_sock.getsockname()
