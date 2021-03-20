@@ -62,7 +62,7 @@ def recv_request(conn):
 
 
 def parse_request(msg):
-    len_of_client_id = msg[0]
+    len_of_client_id = msg[0] + 1
     response_to = msg[1:len_of_client_id]
     request = msg[len_of_client_id:]
 
