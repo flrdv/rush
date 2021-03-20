@@ -40,6 +40,7 @@ class Handler:
         self.addr = addr
         self.sock = socket()
         self.clients = []
+        self.updates_processor = lambda update: update
 
     def __call__(self, filter_=None, **fields):
         """
@@ -57,9 +58,14 @@ class Handler:
 
         return wrapper
 
+    def update_parser(self, func):
+        self.updates_processor = func
+
+        return func
+
     def start(self):
         for client in self.clients:
-            Thread(target=client.start).start()
+            Thread(target=client.start, args=(self.updates_processor,)).start()
 
 
 class Client:
@@ -68,6 +74,8 @@ class Client:
         self.filter = filter_
         self.callback = callback
 
+        self.updates_processor = None
+
         self.sock = socket()
 
     def listener(self):
@@ -75,7 +83,7 @@ class Client:
             request_from, request = recv_request(self.sock)
 
             try:
-                self.callback(self, request_from, request)
+                self.callback(self, self.updates_processor(request_from, request))
             except Exception as exc:
                 print('[HANDLER-CLIENT] Unhandled error occurred while processing request:',
                       f'{exc.__class__.__name__}: {exc}')
@@ -94,7 +102,9 @@ class Client:
     def response(self, response_to, response):
         send_request(self.sock, response_to, response)
 
-    def start(self):
+    def start(self, updates_processor):
+        self.updates_processor = updates_processor
+
         ip, port = self.addr
         print(f'[HANDLER-CLIENT] Connecting to {ip}:{port}')
         self.sock.connect(self.addr)
