@@ -93,11 +93,10 @@ from select import EPOLLIN, EPOLLOUT, EPOLLHUP
 
 from lib import epollserver
 from mainserver.entities import (Filter, Handler, HandlerInitializer,
-                                 INITIAL_BYTESORDER)
+                                 INITIAL_BYTES_SEQUENCE)
 
 RESPONSE = 0
 HEARTBEAT = 1
-REQUEST = b'\x00'
 
 
 class CoreServer:
@@ -131,7 +130,7 @@ class CoreServer:
         handler_initializer = HandlerInitializer(conn)
         self.waiting_for_init[conn] = handler_initializer
 
-        conn.send(INITIAL_BYTESORDER)
+        conn.send(INITIAL_BYTES_SEQUENCE)
 
     def disconn_handler(self, _, conn):
         if conn in self.waiting_for_init:
@@ -232,7 +231,13 @@ class CoreServer:
 
     # USER API STARTS HERE
 
-    def send_update(self, request: dict):
+    def send_update(self, request: list):
+        """
+        Request: a list that contains 2 objects:
+            response_to - any unique id for each client
+            body - request body
+        """
+
         for virtual_group_filter, handlers in self.virtual_groups.items():
             if virtual_group_filter(request):
                 handler = min(handlers, key=lambda _handler: _handler.load)
