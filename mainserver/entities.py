@@ -80,7 +80,7 @@ class HandlerInitializer:
         if self.current_step > 2:
             raise RuntimeError('handler has been already initialized')
 
-        response = self.steps[self.current_step](core_server, msg)
+        response = self.steps[self.current_step](self, core_server, msg)
         self.current_step += 1
 
         return response
