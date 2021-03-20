@@ -37,3 +37,14 @@ class HandshakeManager:
         sendmsg(self.conn, dumps(filter_).encode())
 
         return True, mainserver_name
+
+
+class Packet:
+    def __init__(self, values):
+        self.values = values
+
+    def get_values(self):
+        return self.values
+
+    def __getattr__(self, item):
+        return self.values[item]
