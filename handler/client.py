@@ -47,11 +47,11 @@ class Handler:
         (mainserever.entities), or just dict as kwargs
         """
 
-        if filter_ is None:
-            filter_ = Filter(fields)
+        if filter_ is not None:
+            fields = filter_.values
 
         def wrapper(func):
-            self.clients.append(Client(self.addr, filter_, func))
+            self.clients.append(Client(self.addr, fields, func))
 
             return func
 
