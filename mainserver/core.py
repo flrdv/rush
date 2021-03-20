@@ -99,7 +99,7 @@ from typing import Dict, List
 from select import EPOLLIN, EPOLLOUT, EPOLLHUP
 
 from lib import epollserver
-from lib.msgproto import send_request, recv_request
+from lib.msgproto import send_request, parse_request
 from mainserver.entities import Filter, Handler, HandlerInitializer
 
 RESPONSE = 0
@@ -232,7 +232,8 @@ class CoreServer:
         elif response_body[0] == HEARTBEAT:
             handler_entity.set_load(response_body[1])
         else:
-            self.callback(handler_entity, response_body[1:])
+            response_to, response = parse_request(response_body)
+            self.callback(response_to, response)
 
     # USER API STARTS HERE
 
