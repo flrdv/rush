@@ -11,7 +11,8 @@ def stringify_addr(addr):
 
 class SimpleSocketServer:
     def __init__(self):
-        self.clients = {}   # ip:port: conn
+        self.clients_ids = {}   # ip:port: conn
+        self.clients = {}
 
         self.epollserver = epollserver.EpollServer(('0.0.0.0', 9090))
         self.epollserver.add_handler(self.conn_handler, epollserver.CONNECT)
@@ -21,18 +22,19 @@ class SimpleSocketServer:
         self.server_core = CoreServer(self.response, addr=('0.0.0.0', 10000))
 
     def response(self, response_to, response_body):
-        conn = self.clients[response_to]
+        conn = self.clients_ids[response_to]
         sendmsg(conn, base64.b64decode(response_body))
 
     def conn_handler(self, _, conn):
         ip = stringify_addr(conn.getpeername())
         print('New connection:', ip)
-        self.clients[ip] = conn
+        self.clients_ids[ip] = conn
+        self.clients[conn] = ip
 
     def disconn_handler(self, _, conn):
-        ip = stringify_addr(conn.getpeername())
+        ip = self.clients.pop(conn)
+        self.clients_ids.pop(ip)
         print('Disconnected:', ip)
-        self.clients.pop(ip)
 
     def requests_handler(self, _, conn):
         msg = recvmsg(conn)
