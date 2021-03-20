@@ -66,6 +66,14 @@ part 'Handler Initialization Handshake':
     (using lib.msgproto), and send it's filter (to be associated with one
     of the virtual groups)
 
+    Steps:
+        (C)lient, (S)erver:
+            C: b'\x69\x04\x02\x00'
+            S: b'\x69\x04\x02\x00'[::-`]
+            C: b'\x01'
+            S: it's name (using lib.msgproto)
+            C: it's filter (using lib.msgproto)
+
     Yes, this is kinda epollserver.handshake, but a bit modified
 
 part 'Responses Thread' (currently unused, may be implemented):
@@ -129,8 +137,6 @@ class CoreServer:
 
         handler_initializer = HandlerInitializer(conn)
         self.waiting_for_init[conn] = handler_initializer
-
-        conn.send(INITIAL_BYTES_SEQUENCE)
 
     def disconn_handler(self, _, conn):
         if conn in self.waiting_for_init:

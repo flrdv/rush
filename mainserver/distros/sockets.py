@@ -13,7 +13,7 @@ class SimpleSocketServer:
 
         self.epollserver = epollserver.EpollServer(('0.0.0.0', 9090))
 
-        self.server_core = CoreServer(self.response)
+        self.server_core = CoreServer(self.response, addr=('0.0.0.0', 10000))
 
     def response(self, response_to, response_body):
         conn = self.clients[response_to]
