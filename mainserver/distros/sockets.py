@@ -1,5 +1,3 @@
-import base64
-
 from lib import epollserver
 from mainserver.core import CoreServer
 from lib.msgproto import sendmsg, recvmsg
@@ -7,6 +5,9 @@ from lib.msgproto import sendmsg, recvmsg
 
 def stringify_addr(addr):
     return addr[0] + ':' + str(addr[1])
+
+
+NAME = 'sockets-demo'
 
 
 class SimpleSocketServer:
@@ -19,7 +20,8 @@ class SimpleSocketServer:
         self.epollserver.add_handler(self.disconn_handler, epollserver.DISCONNECT)
         self.epollserver.add_handler(self.requests_handler, epollserver.RECEIVE)
 
-        self.server_core = CoreServer(self.response, addr=('0.0.0.0', 10000))
+        self.server_core = CoreServer(self.response, addr=('0.0.0.0', 10000),
+                                      name=NAME)
 
     def response(self, response_to, response_body):
         conn = self.clients_ids[response_to.decode()]
