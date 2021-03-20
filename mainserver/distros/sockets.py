@@ -1,3 +1,5 @@
+import base64
+
 from lib import epollserver
 from mainserver.core import CoreServer
 from lib.msgproto import sendmsg, recvmsg
@@ -20,19 +22,23 @@ class SimpleSocketServer:
 
     def response(self, response_to, response_body):
         conn = self.clients[response_to]
-        sendmsg(conn, response_body)
+        sendmsg(conn, base64.b64decode(response_body))
 
     def conn_handler(self, _, conn):
-        print('New connection:', stringify_addr(conn.getpeername()))
+        ip = stringify_addr(conn.getpeername())
+        print('New connection:', ip)
+        self.clients[ip] = conn
 
     def disconn_handler(self, _, conn):
-        print('Disconnected:', stringify_addr(conn.getpeername()))
+        ip = stringify_addr(conn.getpeername())
+        print('Disconnected:', ip)
+        self.clients.pop(ip)
 
     def requests_handler(self, _, conn):
         msg = recvmsg(conn)
         ip = stringify_addr(conn.getpeername())
         print('New request from', ip, ':', msg)
-        self.server_core.send_update([ip, {'body': msg}])
+        self.server_core.send_update(ip, msg, {'body': msg.decode()})
 
     def start(self):
         self.epollserver.start(threaded=True)
