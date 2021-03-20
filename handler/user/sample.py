@@ -4,6 +4,7 @@ from handler.client import Handler
 
 
 handler = Handler(addr=('192.168.0.102', 10000))
+handler.require('sockets-demo')
 
 
 @handler.update_parser
