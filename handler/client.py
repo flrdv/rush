@@ -1,3 +1,4 @@
+from sys import exit
 from socket import socket
 from threading import Thread
 from psutil import cpu_percent
@@ -41,6 +42,7 @@ class Handler:
         self.sock = socket()
         self.clients = []
         self.updates_processor = lambda update: update
+        self.require_mainserver_name = None
 
     def __call__(self, filter_=None, **fields):
         """
@@ -63,9 +65,13 @@ class Handler:
 
         return func
 
+    def require(self, mainserver_name):
+        self.require_mainserver_name = mainserver_name
+
     def start(self):
         for client in self.clients:
-            Thread(target=client.start, args=(self.updates_processor,)).start()
+            Thread(target=client.start, args=(self.updates_processor,
+                                              self.require_mainserver_name)).start()
 
 
 class Client:
@@ -102,7 +108,7 @@ class Client:
     def response(self, response_to, response):
         send_request(self.sock, response_to, response)
 
-    def start(self, updates_processor):
+    def start(self, updates_processor, require_mainserver):
         self.updates_processor = updates_processor
 
         ip, port = self.addr
@@ -115,6 +121,11 @@ class Client:
         if not succeeded:
             print('[HANDLER-CLIENT] Failed to handshake with mainserver:', description)
             return
+
+        if require_mainserver is not None and description != require_mainserver:
+            print('[HANDLER-CLIENT] Requiring', require_mainserver,
+                  'mainserver, but having', description, 'instead. Aborting')
+            exit(0)
 
         print('[HANDLER-CLIENT] Handshake with mainserver succeeded: '
               'mainserver-name is', description)
