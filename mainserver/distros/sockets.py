@@ -32,7 +32,7 @@ class SimpleSocketServer:
         msg = recvmsg(conn)
         ip = stringify_addr(conn.getpeername())
         print('New request from', ip, ':', msg)
-        self.server_core.send_update([ip, msg])
+        self.server_core.send_update([ip, {'body': msg}])
 
     def start(self):
         self.epollserver.start(threaded=True)
