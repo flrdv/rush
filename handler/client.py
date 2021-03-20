@@ -1,11 +1,11 @@
 from socket import socket
 from threading import Thread
 from psutil import cpu_percent
+from traceback import format_exc
 
 from handler.entities import HandshakeManager
 from lib.periodic_events import PeriodicEventsExecutor
-from lib.msgproto import (sendmsg, recvmsg, recv_request,
-                          send_request)
+from lib.msgproto import sendmsg, recv_request, send_request
 
 RESPONSE = b'\x00'
 HEARTBEAT = b'\x01'
@@ -73,7 +73,14 @@ class Client:
     def listener(self):
         while True:
             request_from, request = recv_request(self.sock)
-            self.callback(self, request_from, request)
+
+            try:
+                self.callback(self, request_from, request)
+            except Exception as exc:
+                print('[HANDLER-CLIENT] Unhandled error occurred while processing request:',
+                      f'{exc.__class__.__name__}: {exc}')
+                print('[HANDLER-CLIENT] Full error text:')
+                print(format_exc())
 
     def heartbeat_manager(self):
         """
