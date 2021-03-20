@@ -12,7 +12,7 @@ def compare_filters(pattern: dict or list, source: dict or list):
                compare_filters(pattern[1], source[1])
     elif isinstance(source, list):
         source = source[1]
-    
+
     source_items = source.items()
 
     for key, value in pattern.items():
