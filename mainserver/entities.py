@@ -1,7 +1,9 @@
 import re
 from json import loads, JSONDecodeError
 
-INITIAL_BYTESORDER = b'\x69\x04\x02\x00'
+from lib.msgproto import sendmsg
+
+INITIAL_BYTES_SEQUENCE = b'\x69\x04\x02\x00'
 
 
 def compare_filters(pattern: dict, source: dict):
@@ -91,7 +93,7 @@ class HandlerInitializer:
         if msg != b'\x69\x04\x02\x00':
             return False
 
-        self.conn.send(INITIAL_BYTESORDER[::-1])
+        self.conn.send(INITIAL_BYTES_SEQUENCE[::-1])
 
         return True
 
@@ -103,7 +105,7 @@ class HandlerInitializer:
         if msg != b'\x01':
             return False
 
-        self.conn.send(core_server.name.encode())
+        sendmsg(self.conn, core_server.name.encode())
 
         return True
 
