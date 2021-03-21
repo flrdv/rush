@@ -85,7 +85,7 @@ class StressTest:
         for thread in self.threads:
             thread.join()
 
-        rps_for_every_client = [iters / alivetime
+        rps_for_every_client = [(iters * self.packets_per_second) / alivetime
                                 for ident, (iters, alivetime) in self.iterations.items()]
         total_rps = self.total_packets_sent / len(rps_for_every_client)
         average_rps = sum(rps_for_every_client) / len(rps_for_every_client)
