@@ -1,4 +1,5 @@
 import socket
+from typing import List
 from random import choice
 from time import time, sleep
 from threading import Thread, get_ident
@@ -15,7 +16,7 @@ class StressTest:
         self.packets_maxtimeout = 1 / packets_per_second
         self.wait_response = wait_response
         self.test_time = test_time or 999999
-        self.threads = []
+        self.threads: List[Thread] = []
 
         self.active = False
         self.total_packets_sent = 0
@@ -24,6 +25,8 @@ class StressTest:
                                           b'lorem ipsum, my brother!',
                                           b'it should be long request as fuck, but I\'m not sure']
         self.iterations = {}    # thread-id: iters
+        self.response_time = []
+        self.clients_disconnected = 0
 
     def client(self):
         ident = get_ident()
@@ -34,25 +37,28 @@ class StressTest:
 
             began_at = time()
 
-            while time() <= began_at + self.test_time and self.active:
-                for _ in range(self.packets_per_second):
-                    sendmsg(sock, choice(self.requests))
-                    self.total_packets_sent += 1
+            try:
+                while time() <= began_at + self.test_time and self.active:
+                    for _ in range(self.packets_per_second):
+                        sendmsg(sock, choice(self.requests))
+                        self.total_packets_sent += 1
 
-                    if self.wait_response:
-                        started_waiting_at = time()
+                        if self.wait_response:
+                            started_waiting_at = time()
 
-                        try:
-                            recvmsg(sock, timeout=1)
-                        except TimeoutError:
-                            print('Server fucked up')
-                        else:
-                            if time() - started_waiting_at > self.packets_maxtimeout:
-                                self.server_cant_handle_specified_load += 1
+                            try:
+                                assert recvmsg(sock, timeout=1) is not None
+                            except (TimeoutError, AssertionError):
+                                print('Server fucked up')
+                            else:
+                                self.response_time.append(time() - started_waiting_at)
 
-                        sleep(self.packets_maxtimeout)
+                            sleep(self.packets_maxtimeout)
 
-                self.iterations[ident] += 1
+                    self.iterations[ident] += 1
+            except ConnectionResetError:
+                print('Server has disconnected this client')
+                self.clients_disconnected += 1
 
         print(f'finished ({round(time() - began_at, 2)} secs)')
 
@@ -74,32 +80,45 @@ class StressTest:
 
         self.active = False
 
-        map(lambda thread_: thread_.join(), self.threads)
+        for thread in self.threads:
+            thread.join()
 
         rps_for_every_client = [iters / self.packets_per_second
                                 for ident, iters in self.iterations.items()]
         total_rps = self.total_packets_sent / len(rps_for_every_client)
+        average_response_time = sum(self.response_time) / len(self.response_time)
 
         sleep(.5)
 
         print('Total requests sent:', self.total_packets_sent)
         print('RPS:', total_rps)
-        print('Server failed and didn\'t response with required max timeout between packets:',
-              self.server_cant_handle_specified_load)
+        print('Average response time:', average_response_time * 1000, 'ms')
+        print('Clients were disconnected:', self.clients_disconnected)
 
 
-def send(msg: bytes):
+def time_request(msg: bytes, retries=3):
     with socket.socket() as sock:
         sock.settimeout(1)
         print('connecting...')
         sock.connect(('192.168.0.102', 9090))
         print('connected')
-        for _ in range(10):
+
+        results = []
+
+        for _ in range(retries):
+            began_at = time()
+
             print('sending:', msg)
             sendmsg(sock, msg)
             print('sent\nreceiving response')
             response = recvmsg(sock)
+            ended_at = time()
+            time_went = ended_at - began_at
             print('received:', response)
+            print('time elapsed:', time_went * 1000, 'ms')
+            results.append(time_went)
+
+        print('Finished. Average response time:', (sum(results) / len(results)) * 1000, 'ms')
 
     print('closed connection')
 
@@ -110,6 +129,7 @@ def send(msg: bytes):
 # thread1.start(), thread2.start(), thread3.start()
 
 if __name__ == '__main__':
-    stress_test = StressTest(clients=1000,
-                             packets_per_second=7)
-    stress_test.start()
+    # stress_test = StressTest(clients=10,
+    #                          packets_per_second=128)
+    # stress_test.start()
+    time_request(b'hello, world!', 10)
