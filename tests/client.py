@@ -87,15 +87,13 @@ class StressTest:
 
         rps_for_every_client = [(iters * self.packets_per_second) / alivetime
                                 for ident, (iters, alivetime) in self.iterations.items()]
-        total_rps = self.total_packets_sent / len(rps_for_every_client)
         average_rps = sum(rps_for_every_client) / len(rps_for_every_client)
         average_response_time = sum(self.response_time) / len(self.response_time)
 
         sleep(.5)
 
         print('Total requests sent:', self.total_packets_sent)
-        print('Total RPS (low accuracy):', total_rps)
-        print('Average RPS (good accuracy):', average_rps)
+        print('Average RPS:', average_rps)
         print('Average response time:', average_response_time * 1000, 'ms')
         print('Clients were disconnected:', self.clients_disconnected)
 
