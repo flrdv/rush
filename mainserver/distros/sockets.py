@@ -41,7 +41,6 @@ class SimpleSocketServer:
     def requests_handler(self, _, conn):
         msg = recvmsg(conn)
         ip = stringify_addr(conn.getpeername())
-        print('New request from', ip, ':', msg)
         self.server_core.send_update(ip, msg, {'body': msg.decode()})
 
     def start(self):
