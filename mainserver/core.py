@@ -101,6 +101,7 @@ from select import EPOLLIN, EPOLLOUT, EPOLLHUP
 from lib import epollserver
 from lib.msgproto import send_request, parse_request
 from mainserver.entities import Filter, Handler, HandlerInitializer
+from lib.periodic_events import PeriodicEventsExecutor
 
 RESPONSE = 0
 HEARTBEAT = 1
@@ -263,8 +264,8 @@ class CoreServer:
             # if not threaded - server will shutdown before last print
             # but if threaded, we just call it and printing log entry
             # right below
-            print(f'[MAINSERVER-CORE] Serving on {ip}:{port}')
+            print(f'[MAINSERVER-CORE] Serving handlers on {ip}:{port}')
 
         self.epoll_server.start(conn_signals=(EPOLLIN | EPOLLOUT | EPOLLHUP),
                                 threaded=threaded)
-        print(f'[MAINSERVER-CORE] Serving on {ip}:{port}')
+        print(f'[MAINSERVER-CORE] Serving handlers on {ip}:{port}')
