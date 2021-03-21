@@ -117,6 +117,7 @@ class Client:
 
         handshake_manager = HandshakeManager(self.sock)
         succeeded, description = handshake_manager.do_handshake(self.filter)
+        description = description.decode()
 
         if not succeeded:
             print('[HANDLER-CLIENT] Failed to handshake with mainserver:', description)
