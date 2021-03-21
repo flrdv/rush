@@ -8,7 +8,8 @@ from lib.msgproto import sendmsg, recvmsg
 
 class StressTest:
     def __init__(self, clients=200, packets_per_second=10,
-                 wait_response=True, test_time=10, requests_pool=None):
+                 wait_response=True, test_time=10, requests_pool=None,
+                 ):
         self.clients = clients
         self.packets_per_second = packets_per_second
         self.packets_maxtimeout = 1 / packets_per_second
@@ -17,6 +18,7 @@ class StressTest:
         self.threads = []
 
         self.active = False
+        self.total_packets_sent = 0
         self.server_cant_handle_specified_load = 0
         self.requests = requests_pool or [b"hello, world!",
                                           b'lorem ipsum, my brother!',
@@ -33,10 +35,9 @@ class StressTest:
             began_at = time()
 
             while time() <= began_at + self.test_time and self.active:
-                # began_iter = time()
-
                 for _ in range(self.packets_per_second):
                     sendmsg(sock, choice(self.requests))
+                    self.total_packets_sent += 1
 
                     if self.wait_response:
                         started_waiting_at = time()
@@ -49,8 +50,7 @@ class StressTest:
                             if time() - started_waiting_at > self.packets_maxtimeout:
                                 self.server_cant_handle_specified_load += 1
 
-                # if time() - began_iter < 1:
-                #     self.finished_plan_faster_times += 1
+                        sleep(self.packets_maxtimeout)
 
                 self.iterations[ident] += 1
 
@@ -78,12 +78,11 @@ class StressTest:
 
         rps_for_every_client = [iters / self.packets_per_second
                                 for ident, iters in self.iterations.items()]
-        total_requests_sent = sum(rps_for_every_client)
-        total_rps = total_requests_sent / len(rps_for_every_client)
+        total_rps = self.total_packets_sent / len(rps_for_every_client)
 
         sleep(.5)
 
-        print('Total requests sent:', total_requests_sent)
+        print('Total requests sent:', self.total_packets_sent)
         print('RPS:', total_rps)
         print('Server failed and didn\'t response with required max timeout between packets:',
               self.server_cant_handle_specified_load)
@@ -111,6 +110,6 @@ def send(msg: bytes):
 # thread1.start(), thread2.start(), thread3.start()
 
 if __name__ == '__main__':
-    stress_test = StressTest(clients=100,
-                             packets_per_second=10)
+    stress_test = StressTest(clients=1000,
+                             packets_per_second=7)
     stress_test.start()
