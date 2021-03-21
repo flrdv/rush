@@ -53,8 +53,6 @@ class StressTest:
                             else:
                                 self.response_time.append(time() - started_waiting_at)
 
-                        sleep(self.packets_maxtimeout)
-
                     self.iterations[ident][0] += 1
             except ConnectionResetError:
                 print('Server has disconnected this client')
