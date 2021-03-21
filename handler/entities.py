@@ -4,8 +4,21 @@ from lib.msgproto import recvbytes, sendmsg, recvmsg
 
 INITIAL_BYTES_SEQUENCE = b'\x69\x04\x02\x00'
 
+_filters = {}
+
 
 class Filter:
+    def __new__(cls, values):
+        dumped_values = dumps(values)
+
+        if dumped_values in _filters:
+            return _filters[dumped_values]
+
+        instance = object.__new__(cls)
+        _filters[dumped_values] = instance
+
+        return instance
+
     def __init__(self, values: dict):
         self.filter = values
 
