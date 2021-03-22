@@ -60,6 +60,7 @@ class CoreServer:
             print('Received full request:', cell[1])
             # self.send_update(cell[1])
             conn.send(b'HTTP/1.0 200 OK\n\nHello World')
+            self.requests.pop(conn)
 
     def response_handler(self, _, conn):
         """
