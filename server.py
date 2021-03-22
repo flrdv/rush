@@ -51,7 +51,7 @@ class CoreServer:
         parser.execute(recieved, len(recieved))
 
         if parser.is_headers_complete():
-            print('headers:', parser.get_headers())
+            print('headers:', dict(parser.get_headers()))
 
         if parser.is_partial_body():
             cell[1] += parser.recv_body()
