@@ -115,4 +115,9 @@ class WebServer:
         return wrapper
 
     def start(self):
-        ...
+        webserver = CoreServer()
+
+        for handler, filter_ in self.handlers.items():
+            webserver.add_handler(handler, filter_)
+
+        webserver.start(threaded=False)
