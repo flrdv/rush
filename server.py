@@ -10,7 +10,7 @@ HEARTBEAT = 1
 
 
 class CoreServer:
-    def __init__(self, addr=('localhost', 9090), receive_block_size=4096,
+    def __init__(self, addr=('0.0.0.0', 9090), receive_block_size=4096,
                  response_block_size=4096):
         self.receive_block_size = receive_block_size
         self.response_block_size = response_block_size
@@ -94,7 +94,7 @@ class CoreServer:
             # if not threaded - server will shutdown before last print
             # but if threaded, we just call it and printing log entry
             # right below
-            print(f'[INITIALIZATION] Serving handlers on {ip}:{port}')
+            print(f'[INITIALIZATION] Serving on {ip}:{port}')
 
         self.epoll_server.start(conn_signals=(EPOLLIN | EPOLLOUT | EPOLLHUP),
                                 threaded=threaded)
