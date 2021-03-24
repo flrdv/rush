@@ -41,23 +41,28 @@ class CoreServer:
 
         if conn not in self.requests:
             parser = HttpParser()
-            cell = [parser, '']
+            request = Request(None, None, None, None, None)
+            cell = [parser, request]
             self.requests[conn] = cell
         else:
             cell = self.requests[conn]
-            parser = cell[0]
+            parser, request = cell
 
         recieved = conn.recv(self.receive_block_size)
         parser.execute(recieved, len(recieved))
 
         if parser.is_headers_complete():
-            print('headers:', dict(parser.get_headers()))
+            # print('headers:', dict(parser.get_headers()))
+            request.headers = dict(parser.get_headers())
+            request.type = parser.get_method()
+            request.path = parser.get_path()
+            request.protocol = parser.get_version()
 
         if parser.is_partial_body():
-            cell[1] += parser.recv_body()
+            request.body += parser.recv_body()
 
         if parser.is_message_complete():
-            print('Received full request:', cell[1])
+            print('Received full request:', Request)
             # self.send_update(cell[1])
             conn.send(b'HTTP/1.0 200 OK\n\nHello World')
             self.requests.pop(conn)
