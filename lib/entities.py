@@ -14,22 +14,24 @@ class Filter:
 
 
 class Request:
-    def __init__(self, values):
-        self.values = values
+    def __init__(self, typeof, path,
+                 protocol, headers, body):
+        self.type = typeof
+        self.path = path
+        self.protocol = protocol
+        self.headers = headers
+        self.body = body
 
     def get_values(self):
-        return self.values
-
-    def __getattr__(self, item):
-        return object.__getattribute__(self, 'values')[item]
-
-    def __getitem__(self, item):
-        return self.values[item]
+        return {**self.headers, 'body': self.body}
 
     def __str__(self):
-        values = ', '.join(f'{var}={repr(val)}' for var, val in self.values.items())
+        headers = '\n'.join((f'{key}={repr(value)}' for key, value in self.headers.items()))
 
-        return f'Request({values})'
+        return f"""{self.type} {self.path} {self.protocol}
+{headers}
+
+{self.body}"""
 
     __repr__ = __str__
 
@@ -50,13 +52,13 @@ def compare_filters(pattern: dict, source: Request):
 
 def test_comparing():
     pattern = {"path": r"\w+/ok"}
-    source1 = Request({
+    source1 = Request('get', None, None, {
         "path": 'ok/neok',
         "wow": "no"
-    })
-    source2 = Request({
+    }, None)
+    source2 = Request('get', None, None, {
         "path": "ok/ok"
-    })
+    }, None)
 
     assert compare_filters(pattern, source1) is False
     assert compare_filters(pattern, source2) is True
