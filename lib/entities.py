@@ -31,7 +31,7 @@ class Request:
         return f"""{self.type} {self.path} {self.protocol}
 {headers}
 
-{self.body}"""
+{self.body or ''}"""
 
     __repr__ = __str__
 
