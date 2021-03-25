@@ -41,8 +41,7 @@ class CoreServer:
 
         if conn not in self.requests:
             parser = HttpParser()
-            request = Request(None, None, None, None, None)
-            cell = [parser, request]
+            cell = [parser, None]
             self.requests[conn] = cell
         else:
             cell = self.requests[conn]
@@ -53,13 +52,21 @@ class CoreServer:
 
         if parser.is_headers_complete():
             # print('headers:', dict(parser.get_headers()))
+            request = Request(parser.get_method(), parser.get_path(),
+                              f'HTTP/{".".join(parser.get_version())}',
+                              dict(parser.get_headers()), '')
             request.headers = dict(parser.get_headers())
             request.type = parser.get_method()
             request.path = parser.get_path()
             request.protocol = parser.get_version()
+            cell[1] = request
 
         if parser.is_partial_body():
-            request.body += parser.recv_body()
+            # we create Request object only after we receive headers
+            # to avoid creating Request object with None-value attrs
+            # and filling them later. That's why at this point we anyway
+            # already has a request object
+            request.body += parser.recv_body()  # noqa
 
         if parser.is_message_complete():
             print('Received full request:', request)
