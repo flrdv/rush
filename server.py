@@ -15,7 +15,7 @@ class CoreServer:
         self.receive_block_size = receive_block_size
         self.response_block_size = response_block_size
 
-        self.requests = {}   # conn: [HttpParser, request]
+        self.requests = {}   # conn: [HttpParser, request, headers_done]
         self.responses = {}  # conn: [requests]
         self.clients = {}    # conn: addr
         self.handlers = {}   # func: filter-entity
@@ -41,17 +41,17 @@ class CoreServer:
 
         if conn not in self.requests:
             parser = HttpParser()
-            cell = [parser, None]
+            headers_done = False
+            cell = [parser, None, False]
             self.requests[conn] = cell
         else:
             cell = self.requests[conn]
-            parser, request = cell
+            parser, request, headers_done = cell
 
         recieved = conn.recv(self.receive_block_size)
         parser.execute(recieved, len(recieved))
 
-        if parser.is_headers_complete():
-            # print('headers:', dict(parser.get_headers()))
+        if parser.is_headers_complete() and not headers_done:
             http_version = ".".join(map(str, parser.get_version()))
             request = Request(parser.get_method(), parser.get_path(),
                               f'HTTP/{http_version}',
@@ -61,6 +61,7 @@ class CoreServer:
             request.path = parser.get_path()
             request.protocol = parser.get_version()
             cell[1] = request
+            cell[2] = True
 
         if parser.is_partial_body():
             # we create Request object only after we receive headers
