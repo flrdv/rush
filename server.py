@@ -71,7 +71,7 @@ class CoreServer:
         if parser.is_message_complete():
             print('Received full request:', request)
             # self.send_update(cell[1])
-            conn.send(b'HTTP/1.0 200 OK\n\nHello World')
+            conn.send(b'HTTP/1.1 200 OK\n\nHello World')
             self.requests.pop(conn)
 
     def response_handler(self, _, conn):
