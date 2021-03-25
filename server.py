@@ -52,8 +52,9 @@ class CoreServer:
 
         if parser.is_headers_complete():
             # print('headers:', dict(parser.get_headers()))
+            http_version = ".".join(map(str, parser.get_version()))
             request = Request(parser.get_method(), parser.get_path(),
-                              f'HTTP/{".".join(parser.get_version())}',
+                              f'HTTP/{http_version}',
                               dict(parser.get_headers()), '')
             request.headers = dict(parser.get_headers())
             request.type = parser.get_method()
