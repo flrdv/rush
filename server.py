@@ -23,6 +23,7 @@ class CoreServer:
         self.epoll_server = epollserver.EpollServer(addr)
         self.epoll_server.add_handler(self.conn_handler, epollserver.CONNECT)
         self.epoll_server.add_handler(self.requests_handler, epollserver.RECEIVE)
+        self.epoll_server.add_handler(self.response_handler, epollserver.RESPONSE)
         self.epoll_server.add_handler(self.disconn_handler, epollserver.DISCONNECT)
 
     def conn_handler(self, _, conn):
@@ -56,12 +57,7 @@ class CoreServer:
             request = Request(parser.get_method(), parser.get_path(),
                               f'HTTP/{http_version}',
                               dict(parser.get_headers()), '')
-            request.headers = dict(parser.get_headers())
-            request.type = parser.get_method()
-            request.path = parser.get_path()
-            request.protocol = parser.get_version()
-            cell[1] = request
-            cell[2] = True
+            cell[1:3] = [request, True]
 
         if parser.is_partial_body():
             # we create Request object only after we receive headers
@@ -74,7 +70,14 @@ class CoreServer:
             print('Received full request:', request)
             # self.send_update(cell[1])
             conn.send(b'HTTP/1.1 200 OK\n\nHello World')
+            self.add_response(conn, b'HTTP/1.1 200 OK\n\nHello World')
             self.requests.pop(conn)
+
+    def add_response(self, conn, response):
+        if conn not in self.responses:
+            self.responses[conn] = [response]
+        else:
+            self.responses[conn].append(response)
 
     def response_handler(self, _, conn):
         """
@@ -86,9 +89,6 @@ class CoreServer:
 
         if len(block) < self.response_block_size:
             self.responses[conn].pop(0)
-
-            if not self.responses[conn]:
-                self.responses.pop(conn)
 
     def add_handler(self, handler, filter_):
         self.handlers[handler] = filter_
