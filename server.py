@@ -68,10 +68,13 @@ class CoreServer:
 
         if parser.is_message_complete():
             print('Received full request:', request)
-            # self.send_update(cell[1])
-            conn.send(b'HTTP/1.1 200 OK\n\nHello World')
-            self.add_response(conn, b'HTTP/1.1 200 OK\n\nHello World')
+            self.send_response(conn, b'HTTP/1.1 200 OK\n\nHello World')
             self.requests.pop(conn)
+
+    def send_response(self, conn, response):
+        # to avoid sending the whole request once
+        bytes_sent = conn.send(response[:self.response_block_size])
+        self.add_response(conn, response[bytes_sent:])
 
     def add_response(self, conn, response):
         if conn not in self.responses:
