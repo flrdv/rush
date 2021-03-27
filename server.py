@@ -74,7 +74,9 @@ class CoreServer:
     def send_response(self, conn, response):
         # to avoid sending the whole request once
         bytes_sent = conn.send(response[:self.response_block_size])
-        self.add_response(conn, response[bytes_sent:])
+
+        if not len(response) == bytes_sent:
+            self.add_response(conn, response[bytes_sent:])
 
     def add_response(self, conn, response):
         if conn not in self.responses:
@@ -90,8 +92,9 @@ class CoreServer:
         block = self.responses[conn][0][:self.response_block_size]
         conn.send(block)
 
-        if len(block) < self.response_block_size:
+        if self.responses[conn][0]:
             self.responses[conn].pop(0)
+            self.epoll_server.modify(conn, epollserver.RECEIVE)
 
     def add_handler(self, handler, filter_):
         self.handlers[handler] = filter_
