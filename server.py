@@ -27,16 +27,13 @@ class CoreServer:
         ip, port = conn.getpeername()
         print(f'[NEW-CONNECTION] Client: {ip}:{port}')
         self.clients[conn] = (ip, port)
+        self.responses[conn] = []
 
     def disconn_handler(self, _, conn):
         ip, port = self.clients[conn]
         print(f'[DISCONNECTED] Client: {ip}:{port}')
 
     def requests_handler(self, _, conn):
-        """
-        TODO: add here parsing http requests using http-parser
-        """
-
         if conn not in self.requests:
             parser = HttpParser()
             headers_done = False
@@ -46,8 +43,8 @@ class CoreServer:
             cell = self.requests[conn]
             parser, request, headers_done = cell
 
-        recieved = conn.recv(self.receive_block_size)
-        parser.execute(recieved, len(recieved))
+        received = conn.recv(self.receive_block_size)
+        parser.execute(received, len(received))
 
         if parser.is_headers_complete() and not headers_done:
             http_version = ".".join(map(str, parser.get_version()))
@@ -64,18 +61,14 @@ class CoreServer:
             request.body += parser.recv_body()  # noqa
 
         if parser.is_message_complete():
-            print('Received full request:', request)
             self.send_response(conn, b'HTTP/1.1 200 OK\n\nHello World')
             self.requests.pop(conn)
 
     def send_response(self, conn, response):
-        self.epoll_server.modify(conn, epollserver.RESPONSE)
+        if not self.responses[conn]:
+            self.epoll_server.modify(conn, epollserver.RESPONSE)
 
-        # to avoid sending the whole request once
-        bytes_sent = conn.send(response[:self.response_block_size])
-
-        if not len(response) == bytes_sent:
-            self.add_response(conn, response[bytes_sent:])
+        self.add_response(conn, response)
 
     def add_response(self, conn, response):
         self.responses[conn].append(response)
