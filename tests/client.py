@@ -27,12 +27,24 @@ class StressTest:
         self.response_time = []
         self.clients_disconnected = 0
 
-    def client(self):
+    def client(self, start_timeout=0):
+        """
+        Start timeout is made to avoid connecting all the clients at the same time
+        """
+
+        # print('Client #', start_timeout * 10, 'starting after', start_timeout, 'seconds')
+        # sleep(start_timeout)
+
         ident = get_ident()
         self.iterations[ident] = [0, 0]
 
         with socket.socket() as sock:
-            sock.connect(('0.0.0.0', 9090))
+            try:
+                sock.connect(('0.0.0.0', 9090))
+            except TimeoutError:
+                print('Server hasn\'t accepted connection')
+                self.clients_disconnected += 1
+                return
 
             began_at = time()
 
@@ -58,18 +70,19 @@ class StressTest:
                 self.clients_disconnected += 1
 
         alive_time = round(time() - began_at, 2)
-        print(f'finished ({alive_time} secs)')
+        # print(f'finished ({alive_time} secs)')
         self.iterations[ident][1] = alive_time
 
     def start(self):
         print('Starting', self.clients, 'clients...')
         self.active = True
 
-        for _ in range(self.clients):
-            thread = Thread(target=self.client)
+        for client_id in range(self.clients):
+            thread = Thread(target=self.client, args=(client_id / 100,))
             self.threads.append(thread)
             thread.start()
 
+        started_at = time()
         print('Started. Time for stress-test estimated:', self.test_time)
 
         try:
@@ -82,15 +95,20 @@ class StressTest:
         for thread in self.threads:
             thread.join()
 
-        rps_for_every_client = [(iters * self.packets_per_second) / alivetime
+        finished_at = time()
+
+        rps_for_every_client = [((iters * self.packets_per_second) / alivetime) if alivetime else 0
                                 for ident, (iters, alivetime) in self.iterations.items()]
         average_rps = sum(rps_for_every_client) / len(rps_for_every_client)
         average_response_time = sum(self.response_time) / len(self.response_time)
 
         sleep(.5)
 
+        print('Zeroes in rps_for_every_client:', rps_for_every_client.count(0))
         print('Total requests sent:', self.total_packets_sent)
-        print('Average RPS:', average_rps)
+        print('Total time went:', round(finished_at - started_at, 3), 'secs')
+        print('Average RPS for each client:', average_rps)
+        print('Total RPS:', self.total_packets_sent / (finished_at - started_at))
         print('Average response time:', average_response_time * 1000, 'ms')
         print('Clients were disconnected:', self.clients_disconnected)
 
@@ -129,7 +147,7 @@ def time_request(msg: bytes, retries=3):
 # thread1.start(), thread2.start(), thread3.start()
 
 if __name__ == '__main__':
-    stress_test = StressTest(clients=1,
+    stress_test = StressTest(clients=1000,
                              packets_per_second=1000)
     stress_test.start()
     # time_request(b'GET /hello.htm HTTP/1.1\nUser-Agent: Mozilla/4.0 (compatible; MSIE5.01; Windows NT)!\n\n',
