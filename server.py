@@ -5,9 +5,6 @@ from http_parser.http import HttpParser
 from lib import epollserver
 from lib.entities import Request, compare_filters
 
-RESPONSE = 0
-HEARTBEAT = 1
-
 
 class CoreServer:
     def __init__(self, addr=('0.0.0.0', 9090), receive_block_size=4096,
@@ -16,7 +13,7 @@ class CoreServer:
         self.response_block_size = response_block_size
 
         self.requests = {}   # conn: [HttpParser, request, headers_done]
-        self.responses = {}  # conn: [requests]
+        self.responses = {}  # conn: [responses]
         self.clients = {}    # conn: addr
         self.handlers = {}   # func: filter-entity
 
@@ -72,6 +69,8 @@ class CoreServer:
             self.requests.pop(conn)
 
     def send_response(self, conn, response):
+        self.epoll_server.modify(conn, epollserver.RESPONSE)
+
         # to avoid sending the whole request once
         bytes_sent = conn.send(response[:self.response_block_size])
 
@@ -79,21 +78,16 @@ class CoreServer:
             self.add_response(conn, response[bytes_sent:])
 
     def add_response(self, conn, response):
-        if conn not in self.responses:
-            self.responses[conn] = [response]
-        else:
-            self.responses[conn].append(response)
+        self.responses[conn].append(response)
 
     def response_handler(self, _, conn):
-        """
-        Sending requests to the handlers
-        """
+        block = self.responses[conn][0]
+        bytes_sent = conn.send(block)
 
-        block = self.responses[conn][0][:self.response_block_size]
-        conn.send(block)
-
-        if self.responses[conn][0]:
+        if len(block) == bytes_sent:
             self.responses[conn].pop(0)
+
+        if not self.responses[conn]:
             self.epoll_server.modify(conn, epollserver.RECEIVE)
 
     def add_handler(self, handler, filter_):
@@ -117,8 +111,7 @@ class CoreServer:
             # right below
             print(f'[INITIALIZATION] Serving on {ip}:{port}')
 
-        self.epoll_server.start(conn_signals=(EPOLLIN | EPOLLOUT | EPOLLHUP),
-                                threaded=threaded)
+        self.epoll_server.start(threaded=threaded)
         print(f'[INITIALIZATION] Serving on {ip}:{port}')
 
 
