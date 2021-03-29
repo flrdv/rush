@@ -21,9 +21,8 @@ class StressTest:
         self.active = False
         self.total_packets_sent = 0
         self.server_cant_handle_specified_load = 0
-        self.requests = requests_pool or [b"hello, world!",
-                                          b'lorem ipsum, my brother!',
-                                          b'it should be long request as fuck, but I\'m not sure']
+        self.requests = requests_pool or [b"GET /hello.htm HTTP/1.1\nUser-Agent: Mozilla/4.0 (compatible; MSIE5.01; "
+                                          b"Windows NT)!\n\n"]
         self.iterations = {}    # thread-id: [iters, livetime]
         self.response_time = []
         self.clients_disconnected = 0
@@ -33,21 +32,21 @@ class StressTest:
         self.iterations[ident] = [0, 0]
 
         with socket.socket() as sock:
-            sock.connect(('192.168.0.102', 9090))
+            sock.connect(('0.0.0.0', 9090))
 
             began_at = time()
 
             try:
                 while time() <= began_at + self.test_time and self.active:
                     for _ in range(self.packets_per_second):
-                        sendmsg(sock, choice(self.requests))
+                        sock.send(choice(self.requests))
                         self.total_packets_sent += 1
 
                         if self.wait_response:
                             started_waiting_at = time()
 
                             try:
-                                assert recvmsg(sock, timeout=1) is not None
+                                sock.recv(4096)
                             except (TimeoutError, AssertionError):
                                 print('Server fucked up')
                             else:
@@ -99,26 +98,27 @@ class StressTest:
 def time_request(msg: bytes, retries=3):
     with socket.socket() as sock:
         sock.settimeout(1)
-        print('connecting...')
-        sock.connect(('192.168.0.102', 9090))
+        sock.connect(('0.0.0.0', 9090))
         print('connected')
 
         results = []
 
-        for _ in range(retries):
+        started_testing = time()
+
+        for retry in range(retries):
             began_at = time()
 
-            print('sending:', msg)
-            sendmsg(sock, msg)
-            print('sent\nreceiving response')
-            response = recvmsg(sock)
+            sock.send(msg)
+            sock.recv(4096)
             ended_at = time()
             time_went = ended_at - began_at
-            print('received:', response)
-            print('time elapsed:', time_went * 1000, 'ms')
+            print('#', retry, 'time elapsed:', time_went * 1000, 'ms')
             results.append(time_went)
 
+        finished_testing = time()
+
         print('Finished. Average response time:', (sum(results) / len(results)) * 1000, 'ms')
+        print('Totally time for test elapsed:', round(finished_testing - started_testing, 3), 'seconds')
 
     print('closed connection')
 
@@ -132,4 +132,5 @@ if __name__ == '__main__':
     stress_test = StressTest(clients=1,
                              packets_per_second=1000)
     stress_test.start()
-    # time_request(b'hello, world!', 10)
+    # time_request(b'GET /hello.htm HTTP/1.1\nUser-Agent: Mozilla/4.0 (compatible; MSIE5.01; Windows NT)!\n\n',
+    #              1000)
