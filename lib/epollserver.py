@@ -1,10 +1,7 @@
 import select
-from re import fullmatch
 from functools import reduce
 from threading import Thread
-from socket import socket, timeout, MSG_PEEK
-
-from lib.msgproto import recvbytes, sendmsg, recvmsg
+from socket import socket, MSG_PEEK
 
 
 """
@@ -143,9 +140,6 @@ class EpollServer:
                     self.epoll.unregister(fileno)
                     conn = self.conns.pop(fileno)
                     handler(DISCONNECT, conn)
-
-                    # as I said before, nothing will happen if
-                    # we'll close already closed socket
                     conn.close()
                 else:
                     handler(event_type, self.conns[fileno])
