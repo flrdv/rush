@@ -1,6 +1,7 @@
 import select
 from functools import reduce
 from threading import Thread
+from traceback import format_exc
 from socket import socket, MSG_PEEK
 
 
@@ -126,8 +127,8 @@ class EpollServer:
                 if event_type == CONNECT:
                     conn, addr = self.server_sock.accept()
 
-                    if handler(CONNECT, conn) in (DENY_CONN, False):
-                        # connection hasn't been accepted
+                    if self.call_handler(handler, CONNECT, conn) in (DENY_CONN, False):
+                        # connection hasn't been accepted or exception occurred
                         # nothing will happen if we'll close closed socket
                         conn.close()
                         continue
@@ -139,10 +140,24 @@ class EpollServer:
                 elif event_type == DISCONNECT:
                     self.epoll.unregister(fileno)
                     conn = self.conns.pop(fileno)
-                    handler(DISCONNECT, conn)
+                    self.call_handler(handler, DISCONNECT, conn)
                     conn.close()
                 else:
-                    handler(event_type, self.conns[fileno])
+                    self.call_handler(handler, event_type, self.conns[fileno])
+
+    def call_handler(self, handler, event_type, conn):
+        """
+        A safe way to call handler (catch unhandled exceptions)
+        """
+
+        try:
+            return handler(event_type, conn)
+        except Exception as exc:
+            print('[EPOLLSERVER] Caught an unhandled exception in handler '
+                  f'"{handler.__name__}" while handling {event_type}-event:')
+            print(format_exc())
+
+            return DENY_CONN
 
     def get_event_type(self, fileno, event):
         if fileno == self.server_sock.fileno():
