@@ -8,13 +8,13 @@ from lib.msgproto import sendmsg, recvmsg
 
 
 class StressTest:
-    def __init__(self, clients=200, packets_per_second=10,
+    def __init__(self, clients=200, max_packets_per_second=100000,
                  wait_response=True, test_time=10, requests_pool=None,
                  ):
         self.clients = clients
-        self.packets_per_second = packets_per_second
-        self.packets_maxtimeout = 1 / packets_per_second
         self.wait_response = wait_response
+        self.max_packets_per_second = max_packets_per_second
+        self.timeout_between_requests = (1 / max_packets_per_second) if max_packets_per_second else 0
         self.test_time = test_time or 999999
         self.threads: List[Thread] = []
 
@@ -23,17 +23,15 @@ class StressTest:
         self.server_cant_handle_specified_load = 0
         self.requests = requests_pool or [b"GET /hello.htm HTTP/1.1\nUser-Agent: Mozilla/4.0 (compatible; MSIE5.01; "
                                           b"Windows NT)!\n\n"]
-        self.iterations = {}    # thread-id: [iters, livetime]
+        self.iterations = {}    # thread-id: [packets_sent, livetime]
         self.response_time = []
         self.clients_disconnected = 0
+        self.started_at = None
 
     def client(self, start_timeout=0):
         """
         Start timeout is made to avoid connecting all the clients at the same time
         """
-
-        # print('Client #', start_timeout * 10, 'starting after', start_timeout, 'seconds')
-        # sleep(start_timeout)
 
         ident = get_ident()
         self.iterations[ident] = [0, 0]
@@ -48,29 +46,32 @@ class StressTest:
 
             began_at = time()
 
+            if self.started_at is None:
+                self.started_at = began_at
+
             try:
                 while time() <= began_at + self.test_time and self.active:
-                    for _ in range(self.packets_per_second):
-                        sock.send(choice(self.requests))
-                        self.total_packets_sent += 1
-
-                        if self.wait_response:
-                            started_waiting_at = time()
-
-                            try:
-                                sock.recv(4096)
-                            except (TimeoutError, AssertionError):
-                                print('Server fucked up')
-                            else:
-                                self.response_time.append(time() - started_waiting_at)
-
+                    sock.send(choice(self.requests))
+                    self.total_packets_sent += 1
                     self.iterations[ident][0] += 1
+
+                    if self.wait_response:
+                        started_waiting_at = time()
+
+                        try:
+                            sock.recv(4096)
+                        except (TimeoutError, AssertionError):
+                            print('Server fucked up')
+                        else:
+                            self.response_time.append(time() - started_waiting_at)
+
+                    if self.max_packets_per_second:
+                        sleep(self.timeout_between_requests)
             except ConnectionResetError:
                 print('Server has disconnected this client')
                 self.clients_disconnected += 1
 
         alive_time = round(time() - began_at, 2)
-        # print(f'finished ({alive_time} secs)')
         self.iterations[ident][1] = alive_time
 
     def start(self):
@@ -97,8 +98,8 @@ class StressTest:
 
         finished_at = time()
 
-        rps_for_every_client = [((iters * self.packets_per_second) / alivetime) if alivetime else 0
-                                for ident, (iters, alivetime) in self.iterations.items()]
+        rps_for_every_client = [(total_packets_sent / alivetime) if alivetime else 0
+                                for ident, (total_packets_sent, alivetime) in self.iterations.items()]
         average_rps = sum(rps_for_every_client) / len(rps_for_every_client)
         average_response_time = sum(self.response_time) / len(self.response_time)
 
@@ -108,7 +109,7 @@ class StressTest:
         print('Total requests sent:', self.total_packets_sent)
         print('Total time went:', round(finished_at - started_at, 3), 'secs')
         print('Average RPS for each client:', average_rps)
-        print('Total RPS:', self.total_packets_sent / (finished_at - started_at))
+        print('Total RPS:', self.total_packets_sent / (finished_at - self.started_at))
         print('Average response time:', average_response_time * 1000, 'ms')
         print('Clients were disconnected:', self.clients_disconnected)
 
@@ -120,14 +121,13 @@ def time_request(msg: bytes, retries=3):
         print('connected')
 
         results = []
-
         started_testing = time()
 
         for retry in range(retries):
             began_at = time()
 
             sock.send(msg)
-            sock.recv(4096)
+            print(sock.recv(4096))
             ended_at = time()
             time_went = ended_at - began_at
             print('#', retry, 'time elapsed:', time_went * 1000, 'ms')
@@ -136,19 +136,13 @@ def time_request(msg: bytes, retries=3):
         finished_testing = time()
 
         print('Finished. Average response time:', (sum(results) / len(results)) * 1000, 'ms')
-        print('Totally time for test elapsed:', round(finished_testing - started_testing, 3), 'seconds')
+        print('Totally time for test elapsed:', finished_testing - started_testing, 'seconds')
 
     print('closed connection')
 
 
-# thread1 = Thread(target=send, args=(b'hello, world!',))
-# thread2 = Thread(target=send, args=(b'not cool, but how?',))
-# thread3 = Thread(target=send, args=(b'why is it? is it lorem ipsum? Yes!',))
-# thread1.start(), thread2.start(), thread3.start()
-
 if __name__ == '__main__':
-    stress_test = StressTest(clients=1000,
-                             packets_per_second=1000)
+    stress_test = StressTest(clients=1000, test_time=10)
     stress_test.start()
     # time_request(b'GET /hello.htm HTTP/1.1\nUser-Agent: Mozilla/4.0 (compatible; MSIE5.01; Windows NT)!\n\n',
-    #              1000)
+    #              10)
