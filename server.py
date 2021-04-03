@@ -96,6 +96,9 @@ class WebServerCore:
         self.handlers[handler] = filter_
 
     def send_update(self, request: Request):
+        # https://www.youtube.com/watch?v=TUMzEo0a0ek
+        # https://www.youtube.com/watch?v=YQZX0ams8dc
+        # these songs are wonderful. Listen to them
         handler = get_handler(self.handlers, request)
 
         if handler is None:
