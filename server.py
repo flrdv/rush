@@ -3,10 +3,10 @@ from traceback import format_exc
 from http_parser.http import HttpParser
 
 from lib import epollserver
-from lib.entities import Request, get_handler
+from lib.entities import Request, Response, get_handler
 
 
-class CoreServer:
+class WebServerCore:
     def __init__(self, addr=('0.0.0.0', 9090), receive_block_size=4096,
                  response_block_size=4096, max_conns=100000):
         self.receive_block_size = receive_block_size
@@ -102,13 +102,13 @@ class CoreServer:
             # TODO: I has to return 404 http error and write this case into the logs
             print('[NO-HANDLER-ATTACHED] Could not deliver request cause no '
                   'attached handlers matches the request:', request)
-            return
+            return request.response(Response('HTTP/1.1', 404, 'NOT FOUND',
+                                             '<br><p align="center">No handlers attached</p>'))
 
         try:
             handler(request)
         except Exception as exc:
-            print('[HANDLER-ERROR] Caught an unhandled exception in handler '
-                  '"', handler.__name__, '":', sep='')
+            print(f'[HANDLER-ERROR] Caught an unhandled exception in handler "{handler.__name__}:')
             print(format_exc())
 
     def start(self, threaded=True):
@@ -125,7 +125,13 @@ class CoreServer:
             print(f'[INITIALIZATION] Serving on {ip}:{port}')
         except KeyboardInterrupt:
             print('\n[STOPPING] Stopping web-server...')
-            self.stop()
+        except Exception as exc:
+            print('[STOPPING] An unhandled exception occurred:')
+            print(format_exc())
+            print('[STOPPING] Open an issue on https://github.com/floordiv/rush/issues '
+                  'if you think it\'s a bug')
+
+        self.stop()
 
     def stop(self):
         self.epoll_server.stop()
@@ -151,7 +157,7 @@ class WebServer:
         return wrapper
 
     def start(self):
-        webserver = CoreServer(addr=self.addr)
+        webserver = WebServerCore(addr=self.addr)
 
         for handler, filter_ in self.handlers.items():
             webserver.add_handler(handler, filter_)
