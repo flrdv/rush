@@ -138,10 +138,9 @@ class EpollServer:
                     self.conns[conn_fileno] = conn
                     self.epoll.register(conn_fileno, sock_args)
                 elif event_type == DISCONNECT:
-                    self.epoll.unregister(fileno)
                     conn = self.conns.pop(fileno)
                     self.call_handler(handler, DISCONNECT, conn)
-                    conn.close()
+                    conn.close()  # socket will be automatically unregistered from epoll
                 else:
                     self.call_handler(handler, event_type, self.conns[fileno])
 
