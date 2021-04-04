@@ -143,7 +143,7 @@ class WebServerCore:
             self.logger.write(simplelogger.INFO, f'[INITIALIZATION] Serving on {ip}:{port}',
                               to_stdout=True)
         except KeyboardInterrupt:
-            self.logger.write(simplelogger.INFO, '\n[STOPPING] Stopping web-server...',
+            self.logger.write(simplelogger.INFO, '[STOPPING] Stopping web-server...',
                               to_stdout=True)
         except Exception as exc:
             self.logger.write(simplelogger.CRITICAL, '[STOPPING] An unhandled exception occurred:',
