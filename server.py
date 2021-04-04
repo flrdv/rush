@@ -2,20 +2,24 @@ from traceback import format_exc
 
 from http_parser.http import HttpParser
 
-from lib import epollserver
+from lib import epollserver, simplelogger
 from lib.entities import Request, Response, get_handler
 
 
 class WebServerCore:
     def __init__(self, addr=('0.0.0.0', 9090), receive_block_size=4096,
-                 response_block_size=4096, max_conns=100000):
+                 response_block_size=4096, max_conns=100000, debug_mode=False):
         self.receive_block_size = receive_block_size
         self.response_block_size = response_block_size
+        self.debug_mode = debug_mode
+        # if not debug mode, nothing will be printed
+        self.logger = simplelogger.Logger('webserver', also_stdout=debug_mode)
 
         self.requests = {}   # conn: [HttpParser, request, headers_done]
         self.responses = {}  # conn: [responses]
         self.clients = {}    # conn: addr
-        self.handlers = {}   # func: filter
+        self.filter_handlers = {}   # func: filter (callable)
+        self.routes_handlers = {}   # path (string): func
 
         self.epoll_server = epollserver.EpollServer(addr, maxconns=max_conns)
         self.epoll_server.add_handler(self.conn_handler, epollserver.CONNECT)
@@ -25,13 +29,14 @@ class WebServerCore:
 
     def conn_handler(self, _, conn):
         ip, port = conn.getpeername()
-        print(f'[NEW-CONNECTION] Client: {ip}:{port}')
+        self.logger.write(simplelogger.INFO, f'[CONNECTED] Client: {ip}:{port}')
+
         self.clients[conn] = (ip, port)
         self.responses[conn] = []
 
     def disconn_handler(self, _, conn):
         ip, port = self.clients.pop(conn)
-        print(f'[DISCONNECTED] Client: {ip}:{port}')
+        self.logger.write(simplelogger.INFO, f'[DISCONNECTED] Client: {ip}:{port}')
 
         self.responses.pop(conn)
 
@@ -68,7 +73,6 @@ class WebServerCore:
 
         if parser.is_message_complete():
             self.send_update(request)
-            # conn.send(b'HTTP/1.1 200 OK\n\nHello, World!\n')
             self.requests.pop(conn)
 
     def send_response(self, conn, response):
@@ -93,26 +97,36 @@ class WebServerCore:
             self.epoll_server.modify(conn, epollserver.RECEIVE)
 
     def add_handler(self, handler, filter_):
-        self.handlers[handler] = filter_
+        self.filter_handlers[handler] = filter_
+
+    def add_route(self, handler, path):
+        self.routes_handlers[path] = handler
 
     def send_update(self, request: Request):
         # https://www.youtube.com/watch?v=TUMzEo0a0ek
         # https://www.youtube.com/watch?v=YQZX0ams8dc
         # these songs are wonderful. Listen to them
-        handler = get_handler(self.handlers, request)
+
+        if request.path in self.routes_handlers:
+            return self.routes_handlers[request.path](request)
+
+        handler = get_handler(self.filter_handlers, request)
 
         if handler is None:
-            # TODO: I has to return 404 http error and write this case into the logs
-            print('[NO-HANDLER-ATTACHED] Could not deliver request cause no '
-                  'attached handlers matches the request:', request)
-            return request.response(Response('HTTP/1.1', 404, 'NOT FOUND',
+            self.logger.write(simplelogger.DEBUG, '[NO-HANDLER-ATTACHED] Could not deliver request cause no '
+                              'attached handlers matches the request:\n' + str(request))
+
+            return request.response(Response('HTTP/1.1', 404,
                                              '<br><p align="center">No handlers attached</p>'))
 
+        self.safe_call(handler, request)
+
+    def safe_call(self, handler, request):
         try:
             handler(request)
         except Exception as exc:
-            print(f'[HANDLER-ERROR] Caught an unhandled exception in handler "{handler.__name__}:')
-            print(format_exc())
+            self.logger.write(simplelogger.DEBUG, '[HANDLER-ERROR] Caught an unhandled exception in handler '
+                                                  f'"{handler.__name__}:\n{format_exc()}')
 
     def start(self, threaded=True):
         ip, port = self.epoll_server.addr
@@ -121,23 +135,31 @@ class WebServerCore:
             # if not threaded - server will shutdown before last print
             # but if threaded, we just call it and printing log entry
             # right below
-            print(f'[INITIALIZATION] Serving on {ip}:{port}')
+            self.logger.write(simplelogger.INFO, f'[INITIALIZATION] Serving on {ip}:{port}',
+                              to_stdout=True)
 
         try:
             self.epoll_server.start(threaded=threaded)
-            print(f'[INITIALIZATION] Serving on {ip}:{port}')
+            self.logger.write(simplelogger.INFO, f'[INITIALIZATION] Serving on {ip}:{port}',
+                              to_stdout=True)
         except KeyboardInterrupt:
-            print('\n[STOPPING] Stopping web-server...')
+            self.logger.write(simplelogger.INFO, '\n[STOPPING] Stopping web-server...',
+                              to_stdout=True)
         except Exception as exc:
-            print('[STOPPING] An unhandled exception occurred:')
-            print(format_exc())
-            print('[STOPPING] Open an issue on https://github.com/floordiv/rush/issues '
-                  'if you think it\'s a bug')
+            self.logger.write(simplelogger.CRITICAL, '[STOPPING] An unhandled exception occurred:',
+                              to_stdout=True)
+            self.logger.write(simplelogger.CRITICAL, format_exc(),
+                              to_stdout=True, time_format='')
+            self.logger.write(simplelogger.CRITICAL, '[STOPPING] Open an issue on '
+                                                     'https://github.com/floordiv/rush/issues '
+                                                     'if you think it\'s a bug',
+                              to_stdout=True)
 
         self.stop()
 
     def stop(self):
         self.epoll_server.stop()
+        self.logger.stop()
 
     def __del__(self):
         self.stop()
@@ -145,24 +167,36 @@ class WebServerCore:
 
 class WebServer:
     def __init__(self, addr=('0.0.0.0', 9090),
-                 threadpool_workers=None):
+                 threadpool_workers=None, debug_mode=True):
         self.addr = addr
         self.threadpool_workers = threadpool_workers
         self.handlers = {}  # func: filter
+        self.routes = {}    # path: func
+        self.debug_mode = debug_mode
 
-    def serve(self, path=None, func=None):
+    def filter(self, func):
         def wrapper(handler):
-            if path is not None:
-                self.handlers[handler] = lambda request: request.path == path
-            else:
-                self.handlers[handler] = func
+            self.handlers[handler] = func
+
+            return handler
+
+        return wrapper
+
+    def route(self, path='/'):
+        def wrapper(handler):
+            self.routes[path] = handler
+
+            return handler
 
         return wrapper
 
     def start(self):
-        webserver = WebServerCore(addr=self.addr)
+        webserver = WebServerCore(addr=self.addr, debug_mode=self.debug_mode)
 
         for handler, filter_ in self.handlers.items():
             webserver.add_handler(handler, filter_)
+
+        for path, handler in self.routes.items():
+            webserver.add_route(handler, path)
 
         webserver.start(threaded=False)
