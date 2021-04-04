@@ -4,8 +4,6 @@ from random import choice
 from time import time, sleep
 from threading import Thread, get_ident
 
-from lib.msgproto import sendmsg, recvmsg
-
 
 class StressTest:
     def __init__(self, clients=200, max_packets_per_second=100000,
