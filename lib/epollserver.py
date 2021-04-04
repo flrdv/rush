@@ -1,10 +1,8 @@
 import select
-from re import fullmatch
 from functools import reduce
 from threading import Thread
-from socket import socket, timeout, MSG_PEEK
-
-from lib.msgproto import recvbytes, sendmsg, recvmsg
+from traceback import format_exc
+from socket import socket, MSG_PEEK
 
 
 """
@@ -61,6 +59,13 @@ RESPONSE = 3
 # constant that being returned by conn handler if connection has been refused
 DENY_CONN = 5
 
+EPOLLSERVEREVENTS2EPOLLEVENTS = {
+    CONNECT: select.EPOLLIN,
+    DISCONNECT: select.EPOLLHUP,
+    RECEIVE: select.EPOLLIN,
+    RESPONSE: select.EPOLLOUT
+}
+
 
 class EpollServer:
     def __init__(self, addr, maxconns=0):
@@ -78,6 +83,9 @@ class EpollServer:
 
     def add_handler(self, handler, on_event=all):
         self.handlers[on_event] = handler
+
+    def modify(self, fd, for_event):
+        self.epoll.modify(fd, EPOLLSERVEREVENTS2EPOLLEVENTS[for_event])
 
     def start(self, threaded=False, conn_signals=select.EPOLLIN):
         if self._running:
@@ -119,8 +127,8 @@ class EpollServer:
                 if event_type == CONNECT:
                     conn, addr = self.server_sock.accept()
 
-                    if handler(CONNECT, conn) in (DENY_CONN, False):
-                        # connection hasn't been accepted
+                    if self.call_handler(handler, CONNECT, conn) in (DENY_CONN, False):
+                        # connection hasn't been accepted or exception occurred
                         # nothing will happen if we'll close closed socket
                         conn.close()
                         continue
@@ -130,15 +138,25 @@ class EpollServer:
                     self.conns[conn_fileno] = conn
                     self.epoll.register(conn_fileno, sock_args)
                 elif event_type == DISCONNECT:
-                    self.epoll.unregister(fileno)
                     conn = self.conns.pop(fileno)
-                    handler(DISCONNECT, conn)
-
-                    # as I said before, nothing will happen if
-                    # we'll close already closed socket
-                    conn.close()
+                    self.call_handler(handler, DISCONNECT, conn)
+                    conn.close()  # socket will be automatically unregistered from epoll
                 else:
-                    handler(event_type, self.conns[fileno])
+                    self.call_handler(handler, event_type, self.conns[fileno])
+
+    def call_handler(self, handler, event_type, conn):
+        """
+        A safe way to call handler (catch unhandled exceptions)
+        """
+
+        try:
+            return handler(event_type, conn)
+        except Exception as exc:
+            print('[EPOLLSERVER] Caught an unhandled exception in handler '
+                  f'"{handler.__name__}" while handling {event_type}-event:')
+            print(format_exc())
+
+            return DENY_CONN
 
     def get_event_type(self, fileno, event):
         if fileno == self.server_sock.fileno():
@@ -176,109 +194,3 @@ class EpollServer:
 
     def __del__(self):
         self.stop()
-
-
-"""
-Handshake protocol below doesn't seems to be required (using another,
-modified self-wrote version in mainserver.core)
-
-This means, code below may be removed in future
-"""
-
-
-def handshake(i_am: str):
-    """
-    simple decorator that implements simple handshake protocol
-
-    this protocol lets us to detect that requesting server is system's node
-    by this steps:
-        1) client sending to server these bytes: b'\x69\x04\x02\x00'
-        2) client receives from server same bytes but reversed
-        3) client sends byte \x69 (accepting server)
-        4) server responds with it's name (using lib.msgproto.sendmsg)
-        5) client sends \x00 if he doesn't connecting, or \x01 if he's connecting
-
-    :param i_am: name of node
-    """
-
-    def decorator(handler):
-        def wrapper(event_type, conn: socket):
-            if event_type != CONNECT:
-                return handler(event_type, conn)
-
-            old_timeout = conn.gettimeout()
-            conn.settimeout(2)
-
-            try:
-                bytesorder = recvbytes(conn, 4)
-
-                if bytesorder != b'\x69\x04\x02\x00':
-                    conn.close()  # first step failed
-
-                    return DENY_CONN
-
-                conn.send(b'\x00\x02\x04\x69')
-                client_response = conn.recv(1)
-
-                if client_response != b'\x69':
-                    conn.close()
-
-                    return DENY_CONN
-
-                sendmsg(conn, i_am.encode())
-                is_client_connecting = conn.recv(1)
-
-                if not is_client_connecting:
-                    conn.close()
-
-                    return DENY_CONN
-
-                conn.settimeout(old_timeout)
-            except (timeout, BrokenPipeError) as exc:
-                conn.close()
-
-                return DENY_CONN
-
-        return wrapper
-
-    return decorator
-
-
-def do_handshake(conn, node_name=r'\w+'):
-    """
-    implements client-side protocol of handshake()
-
-    :param conn: connection to server
-    :param node_name: regexp (or just plain text) that contains name of required node
-    :return: True if success or False if fail. Conn object is being closed if fail
-    """
-
-    old_timeout = conn.gettimeout()
-    conn.settimeout(2)
-
-    try:
-        conn.send(b'\x69\x04\x02\x00')
-        server_response = recvbytes(conn, 4)
-
-        if server_response != b'\x00\x02\x04\x69':
-            conn.close()
-
-            return False
-
-        conn.send(b'\x69')
-        server_name = recvmsg(conn).decode()
-
-        if not fullmatch(node_name, server_name):
-            conn.send(b'\x00')
-
-            return False
-
-        conn.send(b'\x01')
-    except (timeout, BrokenPipeError) as exc:
-        conn.close()
-
-        return False
-
-    conn.settimeout(old_timeout)
-
-    return True
