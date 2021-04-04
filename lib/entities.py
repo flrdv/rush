@@ -1,3 +1,5 @@
+from utils.status_codes import status_codes
+
 REQUEST_TEMPLATE = """\
 {method} {path} {protocol}
 {headers}
@@ -27,9 +29,6 @@ class Request:
         return {**self.headers, 'body': self.body}
 
     def response(self, response):
-        # if isinstance(data, Response):
-        #     data = data.build()
-
         self.webserver.send_response(self.conn, response.content)
 
     def __str__(self):
@@ -43,12 +42,12 @@ class Request:
 
 
 class Response:
-    def __init__(self, protocol, code, description,
-                 body=None):
+    def __init__(self, protocol, code, body=None,
+                 status_code_desc=None):
 
         self.protocol = protocol
         self.code = code
-        self.description = description
+        self.description = status_code_desc or status_codes.get(code, 'UNKNOWN')
 
         headers = {
             'Content-Length': len(body),
@@ -58,9 +57,8 @@ class Response:
         self.body = body
 
         cooked_headers = '\n'.join(f'{key}: {value}' for key, value in headers.items())
-
         self.content = RESPONSE_TEMPLATE.format(protocol=protocol, code=code,
-                                                description=description, headers=cooked_headers,
+                                                description=self.description, headers=cooked_headers,
                                                 body=body or '').encode()
 
 
