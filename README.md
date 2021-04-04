@@ -1,6 +1,6 @@
 # Rush
 
-This is a master branch. Why there are 146 commits and no real job is done? I removed everything. After 2 months of development, I found a critical problem of my architecture. The only way to solve it - simplify arch from triple-rank to double-rank. Throw away cluster and make resolver not main, but additional system. Integrate functionality of cluster into the mainserver core. 
+Simple Webserver on python3, like Flask, but not Flask. I wanna make it as fast as I can (without using asynchronous code). Additional description will be provided later, when I'll be able to release first alpha version
 
 Branches:
   - master - main branch where all the features appear first
