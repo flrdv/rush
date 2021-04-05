@@ -3,11 +3,12 @@ Simple own logger, made cause I'm bicycler and I like to write
 my own variants of different libraries
 """
 
+from os import mkdir
 from sys import stdout
-from os.path import isfile
 from threading import Thread
 from datetime import datetime
 from queue import Queue, Empty
+from os.path import isfile, dirname
 
 
 _loggers = {}
@@ -59,6 +60,11 @@ class Logger:
 
         for filename in self.filenames:
             if not isfile(filename):
+                file_dirname = dirname(filename)
+
+                if file_dirname:
+                    mkdir(file_dirname)
+
                 mode = 'w'
             else:
                 mode = 'a'
