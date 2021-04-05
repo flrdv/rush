@@ -1,5 +1,6 @@
 import server as webserver
-from utils.entities import Request, Response, Loader
+from utils.loader import Loader
+from utils.entities import Request, Response
 
 """
 This example is not just example: this is a preview of how
@@ -36,9 +37,16 @@ def handler_with_filter(request: Request):
     request.static_response(static_response)
 
 
+@server.route('/')
+def mainpage(request: Request):
+    content, content_type = loader.load('/index.html')
+    request.response(request.protocol, 200, content, content_type=content_type)
+
+
 @server.filter(func=lambda request: True)
 def all_other_pages_handler(request: Request):
-    request.response(request.protocol, 200, loader.load(request.path, cache=False))
+    content, content_type = loader.load(request.path, cache=False)
+    request.response(request.protocol, 200, content, content_type=content_type)
 
 
 server.start()
