@@ -55,6 +55,12 @@ CONNECT = 0
 DISCONNECT = 1
 RECEIVE = 2
 RESPONSE = 3
+EPOLLSERVER_EVENTS2STR = {
+    CONNECT: 'CONNECT',
+    DISCONNECT: 'DISCONNECT',
+    RECEIVE: 'RECEIVE',
+    RESPONSE: 'RESPONSE'
+}
 
 # constant that being returned by conn handler if connection has been refused
 DENY_CONN = 5
@@ -68,14 +74,20 @@ EPOLLSERVEREVENTS2EPOLLEVENTS = {
 
 
 class EpollServer:
-    def __init__(self, addr, maxconns=0):
-        self.server_sock = socket()
+    def __init__(self, addr_or_sock, maxconns=0):
         self.epoll = select.epoll()
         self.handlers = {}  # epoll event: callable
 
-        self.server_sock.bind(addr)
-        self.server_sock.listen(maxconns)
-        self.server_sock.setblocking(False)
+        if isinstance(addr_or_sock, (tuple, list)):
+            self.server_sock = socket()
+            self.server_sock.bind(addr_or_sock)
+            self.server_sock.listen(maxconns)
+            self.server_sock.setblocking(False)
+        else:
+            addr_or_sock.listen(maxconns)
+            addr_or_sock.setblocking(False)
+            self.server_sock = addr_or_sock
+
         self.addr = self.server_sock.getsockname()
 
         self._running = False
@@ -152,8 +164,9 @@ class EpollServer:
         try:
             return handler(event_type, conn)
         except Exception as exc:
+            event_type_stringified = EPOLLSERVER_EVENTS2STR[event_type]
             print('[EPOLLSERVER] Caught an unhandled exception in handler '
-                  f'"{handler.__name__}" while handling {event_type}-event:')
+                  f'"{handler.__name__}" while handling {event_type_stringified}-event:')
             print(format_exc())
 
             return DENY_CONN
