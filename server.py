@@ -3,7 +3,18 @@ from traceback import format_exc
 from http_parser.http import HttpParser
 
 from lib import epollserver, simplelogger
-from lib.entities import Request, Response, get_handler
+from utils.entities import Request, Response, get_handler
+
+DEFAULT_404 = """\
+<html>
+    <head>
+        <title>404 NOT FOUND</title>
+    </head>
+    <body>
+        <h6 align="center">404 REQUESTING PAGE NOT FOUND</h6>
+    </body>
+</html>
+"""
 
 
 class WebServerCore:
@@ -20,6 +31,7 @@ class WebServerCore:
         self.clients = {}    # conn: addr
         self.filter_handlers = {}   # func: filter (callable)
         self.routes_handlers = {}   # path (string): func
+        self.default_404_page = DEFAULT_404
 
         self.epoll_server = epollserver.EpollServer(addr, maxconns=max_conns)
         self.epoll_server.add_handler(self.conn_handler, epollserver.CONNECT)
@@ -102,6 +114,9 @@ class WebServerCore:
     def add_route(self, handler, path):
         self.routes_handlers[path] = handler
 
+    def set_404_page(self, new_content):
+        self.default_404_page = new_content
+
     def send_update(self, request: Request):
         # https://www.youtube.com/watch?v=TUMzEo0a0ek
         # https://www.youtube.com/watch?v=YQZX0ams8dc
@@ -114,10 +129,9 @@ class WebServerCore:
 
         if handler is None:
             self.logger.write(simplelogger.DEBUG, '[NO-HANDLER-ATTACHED] Could not deliver request cause no '
-                              'attached handlers matches the request:\n' + str(request))
+                              'attached handlers matches the request:\n' + str(request).rstrip('\n'))
 
-            return request.response(Response('HTTP/1.1', 404,
-                                             '<br><p align="center">No handlers attached</p>'))
+            return request.response(Response('HTTP/1.1', 404, DEFAULT_404))
 
         self.safe_call(handler, request)
 
@@ -173,6 +187,7 @@ class WebServer:
         self.handlers = {}  # func: filter
         self.routes = {}    # path: func
         self.debug_mode = debug_mode
+        self.default_404_page = None
 
     def filter(self, func):
         def wrapper(handler):
@@ -190,6 +205,9 @@ class WebServer:
 
         return wrapper
 
+    def set_404_page(self, content):
+        self.default_404_page = content
+
     def start(self):
         webserver = WebServerCore(addr=self.addr, debug_mode=self.debug_mode)
 
@@ -198,5 +216,8 @@ class WebServer:
 
         for path, handler in self.routes.items():
             webserver.add_route(handler, path)
+
+        if self.default_404_page:
+            webserver.set_404_page(self.default_404_page)
 
         webserver.start(threaded=False)
