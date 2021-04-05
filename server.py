@@ -192,13 +192,10 @@ class WebServerCore:
                               to_stdout=True)
 
             if oserror_exc.errno == 24:
-                self.logger.write(simplelogger.WARNING, '[STOPPING] Tip: OSError errno is 24. This means '
-                                                        'your os does not allows too much opened files '
-                                                        'descriptors. To see how much descriptors can be '
-                                                        'opened at the same time, run command "ulimit -a" '
-                                                        '("open files"). To increase the value, enter command '
-                                                        '"ulimit -Sn <value>". You also can just type unlimited '
-                                                        'instead of number, the maximal value will be set',
+                self.logger.write(simplelogger.WARNING, '[STOPPING] Problem was caused by lack of descriptors. '
+                                                        'Try to set more available opened files using '
+                                                        '"ulimit -Sn <value>", where value is integer or '
+                                                        '"unlimited"',
                                   to_stdout=True)
         except Exception as exc:
             self.logger.write(simplelogger.CRITICAL, '[STOPPING] An unhandled exception occurred:',
