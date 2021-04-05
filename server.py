@@ -1,9 +1,12 @@
+from socket import socket
 from traceback import format_exc
+from subprocess import check_output
 
 from http_parser.http import HttpParser
 
+from utils import sockutils
 from lib import epollserver, simplelogger
-from utils.entities import Request, Response, get_handler
+from utils.entities import Request, get_handler
 
 DEFAULT_404 = """\
 <html>
@@ -19,21 +22,39 @@ DEFAULT_404 = """\
 
 class WebServerCore:
     def __init__(self, addr=('0.0.0.0', 9090), receive_block_size=4096,
-                 response_block_size=4096, max_conns=100000, debug_mode=False):
+                 response_block_size=4096, max_conns=100000, debug_mode=False,
+                 max_conns_from_ulimit=False):
         self.receive_block_size = receive_block_size
         self.response_block_size = response_block_size
         self.debug_mode = debug_mode
         # if not debug mode, nothing will be printed
-        self.logger = simplelogger.Logger('webserver', also_stdout=debug_mode)
+        self.logger = simplelogger.Logger('webserver', files=('logs/webserver.log',),
+                                          also_stdout=debug_mode)
 
         self.requests = {}   # conn: [HttpParser, request, headers_done]
         self.responses = {}  # conn: [responses]
         self.clients = {}    # conn: addr
         self.filter_handlers = {}   # func: filter (callable)
         self.routes_handlers = {}   # path (string): func
+        self.paths_aliases = {}
         self.default_404_page = DEFAULT_404
 
-        self.epoll_server = epollserver.EpollServer(addr, maxconns=max_conns)
+        serversock = socket()
+        self.logger.write(simplelogger.INFO, f'[INIT] Trying to bind on {addr[0]}:{addr[1]}...',
+                          to_stdout=True)
+        sockutils.wait_for_bind(serversock, addr)
+        self.logger.write(simplelogger.INFO, '[INIT] Done', to_stdout=True)
+        
+        if max_conns_from_ulimit:
+            max_conns = int(check_output('ulimit -n', shell=True))
+            self.logger.write(simplelogger.INFO, '[INIT] Setting max connections to value '
+                                                 f'from "ulimit -n" ({max_conns})',
+                              to_stdout=True)
+        else:
+            self.logger.write(simplelogger.INFO, f'[INIT] Setting max connections to value {max_conns}',
+                              to_stdout=True)
+        
+        self.epoll_server = epollserver.EpollServer(serversock, maxconns=max_conns)
         self.epoll_server.add_handler(self.conn_handler, epollserver.CONNECT)
         self.epoll_server.add_handler(self.requests_handler, epollserver.RECEIVE)
         self.epoll_server.add_handler(self.response_handler, epollserver.RESPONSE)
@@ -117,10 +138,16 @@ class WebServerCore:
     def set_404_page(self, new_content):
         self.default_404_page = new_content
 
+    def path_alias(self, old_path, new_alias):
+        self.paths_aliases[old_path] = new_alias
+
     def send_update(self, request: Request):
         # https://www.youtube.com/watch?v=TUMzEo0a0ek
         # https://www.youtube.com/watch?v=YQZX0ams8dc
         # these songs are wonderful. Listen to them
+
+        if request.path in self.paths_aliases:
+            request.path = self.paths_aliases[request.path]
 
         if request.path in self.routes_handlers:
             return self.routes_handlers[request.path](request)
@@ -131,7 +158,7 @@ class WebServerCore:
             self.logger.write(simplelogger.DEBUG, '[NO-HANDLER-ATTACHED] Could not deliver request cause no '
                               'attached handlers matches the request:\n' + str(request).rstrip('\n'))
 
-            return request.response(Response('HTTP/1.1', 404, DEFAULT_404))
+            return request.response('HTTP/1.1', 404, self.default_404_page)
 
         self.safe_call(handler, request)
 
@@ -149,16 +176,30 @@ class WebServerCore:
             # if not threaded - server will shutdown before last print
             # but if threaded, we just call it and printing log entry
             # right below
-            self.logger.write(simplelogger.INFO, f'[INITIALIZATION] Serving on {ip}:{port}',
+            self.logger.write(simplelogger.INFO, f'[INIT] Serving on {ip}:{port}',
                               to_stdout=True)
 
         try:
             self.epoll_server.start(threaded=threaded)
-            self.logger.write(simplelogger.INFO, f'[INITIALIZATION] Serving on {ip}:{port}',
+            self.logger.write(simplelogger.INFO, f'[INIT] Serving on {ip}:{port}',
                               to_stdout=True)
         except KeyboardInterrupt:
             self.logger.write(simplelogger.INFO, '[STOPPING] Stopping web-server...',
                               to_stdout=True)
+        except OSError as oserror_exc:
+            self.logger.write(simplelogger.CRITICAL, '[STOPPING] OSError occurred during server work, '
+                                                     'stopping webserver silently',
+                              to_stdout=True)
+
+            if oserror_exc.errno == 24:
+                self.logger.write(simplelogger.WARNING, '[STOPPING] Tip: OSError errno is 24. This means '
+                                                        'your os does not allows too much opened files '
+                                                        'descriptors. To see how much descriptors can be '
+                                                        'opened at the same time, run command "ulimit -a" '
+                                                        '("open files"). To increase the value, enter command '
+                                                        '"ulimit -Sn <value>". You also can just type unlimited '
+                                                        'instead of number, the maximal value will be set',
+                                  to_stdout=True)
         except Exception as exc:
             self.logger.write(simplelogger.CRITICAL, '[STOPPING] An unhandled exception occurred:',
                               to_stdout=True)
@@ -180,9 +221,10 @@ class WebServerCore:
 
 
 class WebServer:
-    def __init__(self, addr=('0.0.0.0', 9090),
+    def __init__(self, addr=('0.0.0.0', 9090), maxconns_from_ulimit=True,
                  threadpool_workers=None, debug_mode=True):
         self.addr = addr
+        self.maxconns_from_ulimit = maxconns_from_ulimit
         self.threadpool_workers = threadpool_workers
         self.handlers = {}  # func: filter
         self.routes = {}    # path: func
@@ -208,8 +250,9 @@ class WebServer:
     def set_404_page(self, content):
         self.default_404_page = content
 
-    def start(self):
-        webserver = WebServerCore(addr=self.addr, debug_mode=self.debug_mode)
+    def start(self):        
+        webserver = WebServerCore(addr=self.addr, debug_mode=self.debug_mode,
+                                  max_conns_from_ulimit=self.maxconns_from_ulimit)
 
         for handler, filter_ in self.handlers.items():
             webserver.add_handler(handler, filter_)
