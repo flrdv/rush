@@ -1,5 +1,4 @@
-from os.path import join
-
+from utils import case_formatter
 from utils.status_codes import status_codes
 
 REQUEST_TEMPLATE = """\
@@ -30,17 +29,23 @@ class Request:
     def get_values(self):
         return {**self.headers, 'body': self.body}
 
-    def response(self, protocol, code, body=None, status_code_desc=None):
+    def response(self, protocol, code, body=None, status_code_desc=None,
+                 headers=None, content_type=None):
+        if not isinstance(body, bytes):
+            body = body.encode()
+
         description = status_code_desc or status_codes.get(code, 'UNKNOWN')
-        headers = {
+        main_headers = {
             'Content-Length': len(body),
             'Server': 'rush',
+            'Content-Type': content_type or 'plain/text',
         }
-        cooked_headers = '\n'.join(f'{key}: {value}' for key, value in headers.items())
+        main_headers.update(headers or {})
 
         content = RESPONSE_TEMPLATE.format(protocol=protocol, code=code,
-                                           description=description, headers=cooked_headers,
-                                           body=body or '').encode()
+                                           description=description, headers=format_headers(main_headers),
+                                           body='').encode()
+        content += body.lstrip(b'\n')
 
         self.webserver.send_response(self.conn, content)
 
@@ -54,10 +59,8 @@ class Request:
         self.webserver.send_response(self.conn, response.content)
 
     def __str__(self):
-        headers = '\n'.join((f'{key}={repr(value)}' for key, value in self.headers.items()))
-
         return REQUEST_TEMPLATE.format(method=self.method, path=self.path,
-                                       protocol=self.protocol, headers=headers,
+                                       protocol=self.protocol, headers=format_headers(self.headers),
                                        body=self.body)
 
     __repr__ = __str__
@@ -65,69 +68,48 @@ class Request:
 
 class Response:
     def __init__(self, protocol, code, body=None,
-                 status_code_desc=None):
+                 status_code_desc=None, instant_build=True,
+                 headers=None, content_type=None):
+        """
+        If you wanna add headers later - set instant_build to False
+        to avoid useless http rendering
+        """
+
         self.protocol = protocol
         self.code = code
         self.description = status_code_desc or status_codes.get(code, 'UNKNOWN')
 
-        headers = {
+        self.headers = {
             'Content-Length': len(body),
             'Server': 'rush',
+            'Content-Type': content_type or 'plain/text',
         }
+        self.headers.update(headers or {})
 
-        self.body = body
+        self.body = body if isinstance(body, bytes) else body.encode()
 
-        cooked_headers = '\n'.join(f'{key}: {value}' for key, value in headers.items())
-        self.content = RESPONSE_TEMPLATE.format(protocol=protocol, code=code,
-                                                description=self.description, headers=cooked_headers,
-                                                body=body or '').encode()
+        if instant_build:
+            self.build()
+        else:
+            self.content = None
 
+    def headers(self, from_dict=None, **kwargs):
+        if from_dict is None:
+            from_dict = {}
 
-class Loader:
-    def __init__(self, root='localfiles', caching=False):
-        self.root = root
-        self.caching = caching
+            for key, value in kwargs.items():
+                from_dict[case_formatter.snake2camelcase(key)] = value
 
-        self.cache = {}
-        self.default_404_response = """\
-<html>
-    <head>
-        <title>404 NOT FOUND</title>
-    </head>
-    <body>
-        <h6>404 REQUEST PAGE NOT FOUND</h6>
-    </body>
-</html>        
-"""
+        self.headers.update(from_dict)
 
-    def load(self, path: str, load_otherwise: str or None = '/404.html',
-             cache: bool = None):
-        if path == '/':
-            path = '/index.html'
+        return self
 
-        if path in self.cache:
-            return self.cache[path]
-
-        try:
-            with open(self.root + path) as fd:
-                content = fd.read()
-        except FileNotFoundError:
-            if not load_otherwise:
-                return self.default_404_response
-
-            return self.load(load_otherwise, load_otherwise='', cache=cache)
-
-        if cache is None:
-            cache = self.caching
-
-        if cache:
-            self.cache[path] = content
-
-        return content
-
-    def cache_files(self, *files):
-        for file in files:
-            self.load(file, cache=True)
+    def build(self):
+        self.content = RESPONSE_TEMPLATE.format(protocol=self.protocol, code=self.code,
+                                                description=self.description,
+                                                headers=format_headers(self.headers),
+                                                body='').encode()
+        self.content += self.body.lstrip(b'\n')
 
 
 def get_handler(handlers, request: Request, return_otherwise=None):
@@ -136,3 +118,7 @@ def get_handler(handlers, request: Request, return_otherwise=None):
             return handler
 
     return return_otherwise
+
+
+def format_headers(headers: dict):
+    return '\n'.join(f'{key}: {value}' for key, value in headers.items())
