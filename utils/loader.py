@@ -52,7 +52,7 @@ class Loader:
         if cache:
             self.cache[path] = (content, content_type)
 
-        return content
+        return content, content_type
 
     def cache_files(self, *files):
         for file in files:
