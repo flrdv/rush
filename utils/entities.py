@@ -46,9 +46,7 @@ class Request:
                                            description=description, headers=format_headers(main_headers),
                                            body='').encode()
 
-        content += body.lstrip(b'\n')
-
-        self.webserver.send_response(self.conn, content)
+        self.webserver.send_response(self.conn, content + body.lstrip(b'\n'))
 
     def static_response(self, response: 'Response'):
         """
