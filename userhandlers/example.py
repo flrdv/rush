@@ -13,6 +13,8 @@ loader = Loader(caching=True)
 # shitcode just to avoid using loader inside webserver
 server.set_404_page(loader.load('404.html'))
 
+server.add_redirect('/easteregg', '/eggeaster')
+
 loader.cache_files(
     '/index.html',
     '/404.html',
