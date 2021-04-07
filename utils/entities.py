@@ -46,10 +46,7 @@ class Request:
                                            description=description, headers=format_headers(main_headers),
                                            body='').encode()
 
-        if self.method == 'HEAD':
-            content.rstrip(b'\n')
-        else:
-            content += body.lstrip(b'\n')
+        content += body.lstrip(b'\n')
 
         self.webserver.send_response(self.conn, content)
 
