@@ -32,7 +32,7 @@ class Request:
     def response(self, protocol, code, body=None, status_code_desc=None,
                  headers=None, content_type=None):
         if not isinstance(body, bytes):
-            body = body.encode()
+            body = (body or '').encode()
 
         description = status_code_desc or status_codes.get(code, 'UNKNOWN')
         main_headers = {
@@ -45,7 +45,11 @@ class Request:
         content = RESPONSE_TEMPLATE.format(protocol=protocol, code=code,
                                            description=description, headers=format_headers(main_headers),
                                            body='').encode()
-        content += body.lstrip(b'\n')
+
+        if self.method == 'HEAD':
+            content.rstrip(b'\n')
+        else:
+            content += body.lstrip(b'\n')
 
         self.webserver.send_response(self.conn, content)
 
