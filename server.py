@@ -36,7 +36,7 @@ class WebServerCore:
         self.clients = {}    # conn: addr
         self.filter_handlers = {}   # func: filter (callable)
         self.routes_handlers = {}   # path (string): func
-        self.paths_aliases = {}
+        self.redirects = {}
         self.default_404_page = DEFAULT_404
 
         serversock = socket()
@@ -138,16 +138,16 @@ class WebServerCore:
     def set_404_page(self, new_content):
         self.default_404_page = new_content
 
-    def path_alias(self, old_path, new_alias):
-        self.paths_aliases[old_path] = new_alias
+    def add_redirect(self, from_url, to_url):
+        self.redirects[from_url] = to_url
 
     def send_update(self, request: Request):
         # https://www.youtube.com/watch?v=TUMzEo0a0ek
         # https://www.youtube.com/watch?v=YQZX0ams8dc
         # these songs are wonderful. Listen to them
 
-        if request.path in self.paths_aliases:
-            request.path = self.paths_aliases[request.path]
+        if request.path in self.redirects:
+            return request.response(request.protocol, 308, headers={'Location': self.redirects[request.path]})
 
         if request.path in self.routes_handlers:
             return self.routes_handlers[request.path](request)
@@ -219,18 +219,13 @@ class WebServerCore:
 
 class WebServer:
     def __init__(self, addr=('0.0.0.0', 9090), maxconns_from_ulimit=True,
-                 threadpool_workers=None, debug_mode=True):
-        self.addr = addr
-        self.maxconns_from_ulimit = maxconns_from_ulimit
-        self.threadpool_workers = threadpool_workers
-        self.handlers = {}  # func: filter
-        self.routes = {}    # path: func
-        self.debug_mode = debug_mode
-        self.default_404_page = None
+                 workers=1, debug_mode=True):
+        self.webserver = WebServerCore(addr=addr, debug_mode=debug_mode,
+                                       max_conns_from_ulimit=maxconns_from_ulimit)
 
     def filter(self, func):
         def wrapper(handler):
-            self.handlers[handler] = func
+            self.webserver.add_handler(handler, func)
 
             return handler
 
@@ -238,26 +233,17 @@ class WebServer:
 
     def route(self, path='/'):
         def wrapper(handler):
-            self.routes[path] = handler
+            self.webserver.add_route(handler, path)
 
             return handler
 
         return wrapper
 
     def set_404_page(self, content):
-        self.default_404_page = content
+        self.webserver.set_404_page(content)
 
-    def start(self):        
-        webserver = WebServerCore(addr=self.addr, debug_mode=self.debug_mode,
-                                  max_conns_from_ulimit=self.maxconns_from_ulimit)
+    def add_redirect(self, old, new):
+        self.webserver.add_redirect(old, new)
 
-        for handler, filter_ in self.handlers.items():
-            webserver.add_handler(handler, filter_)
-
-        for path, handler in self.routes.items():
-            webserver.add_route(handler, path)
-
-        if self.default_404_page:
-            webserver.set_404_page(self.default_404_page)
-
-        webserver.start(threaded=False)
+    def start(self):
+        self.webserver.start(threaded=False)
