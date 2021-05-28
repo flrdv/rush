@@ -158,7 +158,7 @@ class EpollServer:
 
     def call_handler(self, handler, event_type, conn):
         """
-        A safe way to call handler (catch unhandled exceptions)
+        A safe way to call handler (and catch unhandled exceptions)
         """
 
         try:
@@ -169,7 +169,7 @@ class EpollServer:
                   f'"{handler.__name__}" while handling {event_type_stringified}-event:')
             print(format_exc())
 
-            return DENY_CONN
+            return False
 
     def get_event_type(self, fileno, event):
         if fileno == self.server_sock.fileno():
