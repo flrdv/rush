@@ -8,6 +8,8 @@ Branches:
   - for-history - old triple-rank system, that doesn't seems to be workable (I didn't test it completely)
   - remake - new Rush iteration (like major versions)
 
+---
+
 Rush v.2: in progress. Changelist:
   - improved perfomance
   - improved architecture
