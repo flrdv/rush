@@ -1,58 +1,53 @@
 from socket import socket
 from traceback import format_exc
 from subprocess import check_output
+from typing import List
 
 from http_parser.http import HttpParser
 
 from utils import sockutils
+from utils.loader import Loader
 from lib import epollserver, simplelogger
-from utils.entities import Request, get_handler
-
-DEFAULT_404 = """\
-<html>
-    <head>
-        <title>404 NOT FOUND</title>
-    </head>
-    <body>
-        <h6 align="center">404 REQUESTING PAGE NOT FOUND</h6>
-    </body>
-</html>
-"""
+from utils.entities import (Request, Handler,
+                            default_not_found_handler, default_internal_error_handler)
 
 
 class WebServerCore:
     def __init__(self, addr=('0.0.0.0', 9090), receive_block_size=4096,
                  response_block_size=4096, max_conns=100000, debug_mode=False,
-                 max_conns_from_ulimit=False):
+                 max_conns_from_ulimit=False, files_cache=True):
         self.receive_block_size = receive_block_size
         self.response_block_size = response_block_size
         self.debug_mode = debug_mode
         # if not debug mode, nothing will be printed
         self.logger = simplelogger.Logger('webserver', files=('logs/webserver.log',),
                                           also_stdout=debug_mode)
+        self.loader = Loader(caching=files_cache)
 
         self.requests = {}   # conn: [HttpParser, request, headers_done]
         self.responses = {}  # conn: [responses]
+
         self.clients = {}    # conn: addr
-        self.filter_handlers = {}   # func: filter (callable)
-        self.routes_handlers = {}   # path (string): func
+
+        self.handlers: List[Handler] = []
+        self.extra_actions_handlers = {
+            'not-found': default_not_found_handler,
+            'internal-error': default_internal_error_handler,
+        }
         self.redirects = {}
-        self.default_404_page = DEFAULT_404
 
         serversock = socket()
-        self.logger.write(simplelogger.INFO, f'[INIT] Trying to bind on {addr[0]}:{addr[1]}...',
-                          to_stdout=True)
+        self.logger.write(simplelogger.INFO, f'[INIT] Trying to bind on {addr[0]}:{addr[1]}...')
         sockutils.wait_for_bind(serversock, addr)
-        self.logger.write(simplelogger.INFO, '[INIT] Done', to_stdout=True)
+        self.logger.write(simplelogger.INFO, '[INIT] Done')
         
         if max_conns_from_ulimit:
             max_conns = int(check_output('ulimit -n', shell=True))
             self.logger.write(simplelogger.INFO, '[INIT] Setting max connections to value '
-                                                 f'from "ulimit -n" ({max_conns})',
-                              to_stdout=True)
+                                                 f'from "ulimit -n" ({max_conns})')
         else:
-            self.logger.write(simplelogger.INFO, f'[INIT] Setting max connections to value {max_conns}',
-                              to_stdout=True)
+            self.logger.write(simplelogger.INFO, '[INIT] Setting max connections to value ' +
+                                                 str(max_conns))
         
         self.epoll_server = epollserver.EpollServer(serversock, maxconns=max_conns)
         self.epoll_server.add_handler(self.conn_handler, epollserver.CONNECT)
@@ -62,14 +57,16 @@ class WebServerCore:
 
     def conn_handler(self, _, conn):
         ip, port = conn.getpeername()
-        self.logger.write(simplelogger.INFO, f'[CONNECTED] Client: {ip}:{port}')
+        self.logger.write(simplelogger.INFO, f'[CONNECTED] Client: {ip}:{port}',
+                          to_stdout=self.debug_mode)
 
         self.clients[conn] = (ip, port)
         self.responses[conn] = []
 
     def disconn_handler(self, _, conn):
         ip, port = self.clients.pop(conn)
-        self.logger.write(simplelogger.INFO, f'[DISCONNECTED] Client: {ip}:{port}')
+        self.logger.write(simplelogger.INFO, f'[DISCONNECTED] Client: {ip}:{port}',
+                          to_stdout=self.debug_mode)
 
         self.responses.pop(conn)
 
@@ -94,7 +91,7 @@ class WebServerCore:
             request = Request(self, conn,
                               parser.get_method(), parser.get_path(),
                               f'HTTP/{http_version}',
-                              dict(parser.get_headers()), '')
+                              dict(parser.get_headers()), b'')
             cell[1:3] = [request, True]
 
         if parser.is_partial_body():
@@ -102,7 +99,12 @@ class WebServerCore:
             # to avoid creating Request object with None-value attrs
             # and filling them later. That's why at this point we anyway
             # already has a request object
-            request.body += parser.recv_body()  # noqa
+            body_fragment = parser.recv_body()
+
+            try:
+                request.body += body_fragment  # noqa
+            except TypeError:
+                request.body += body_fragment.encode()
 
         if parser.is_message_complete():
             self.send_update(request)
@@ -112,9 +114,6 @@ class WebServerCore:
         if not self.responses[conn]:
             self.epoll_server.modify(conn, epollserver.RESPONSE)
 
-        self.add_response(conn, response)
-
-    def add_response(self, conn, response):
         self.responses[conn].append(response)
 
     def response_handler(self, _, conn):
@@ -129,14 +128,20 @@ class WebServerCore:
         if not self.responses[conn]:
             self.epoll_server.modify(conn, epollserver.RECEIVE)
 
-    def add_handler(self, handler, filter_):
-        self.filter_handlers[handler] = filter_
+    def add_handler(self, handler: Handler):
+        self.handlers.append(handler)
 
-    def add_route(self, handler, path):
-        self.routes_handlers[path] = handler
+    def get_handler(self, request: Request):
+        for handler in self.handlers:
+            if handler.route == request.path:
+                if handler.filter is not None and not handler.filter(request):
+                    continue
+                if '*' not in handler.methods and request.method not in handler.methods:
+                    continue
 
-    def set_404_page(self, new_content):
-        self.default_404_page = new_content
+                return handler.func
+
+        return self.extra_actions_handlers['not-found']
 
     def add_redirect(self, from_url, to_url):
         self.redirects[from_url] = to_url
@@ -147,27 +152,20 @@ class WebServerCore:
         # these songs are wonderful. Listen to them
 
         if request.path in self.redirects:
-            return request.response(request.protocol, 308, headers={'Location': self.redirects[request.path]})
+            return request.response(request.protocol, 308, headers={
+                'Location': self.redirects[request.path]
+            })
 
-        if request.path in self.routes_handlers:
-            return self.routes_handlers[request.path](request)
-
-        handler = get_handler(self.filter_handlers, request)
-
-        if handler is None:
-            self.logger.write(simplelogger.DEBUG, '[NO-HANDLER-ATTACHED] Could not deliver request cause no '
-                              'attached handlers matches the request:\n' + str(request).rstrip('\n'))
-
-            return request.response('HTTP/1.1', 404, self.default_404_page)
-
-        self.safe_call(handler, request)
+        self.safe_call(self.get_handler(request), request)
 
     def safe_call(self, handler, request):
         try:
-            handler(request)
+            handler(self.loader, request)
         except Exception as exc:
-            self.logger.write(simplelogger.DEBUG, '[HANDLER-ERROR] Caught an unhandled exception in handler '
-                                                  f'"{handler.__name__}:\n{format_exc()}')
+            self.logger.write(simplelogger.DEBUG, '[HANDLER-ERROR] Caught an unhandled exception '
+                                                  f'in handler "{handler.__name__}:\n{format_exc()}'
+                              )
+            self.extra_actions_handlers['internal-error'](self.loader, request)
 
     def start(self, threaded=True):
         ip, port = self.epoll_server.addr
@@ -176,36 +174,28 @@ class WebServerCore:
             # if not threaded - server will shutdown before last print
             # but if threaded, we just call it and printing log entry
             # right below
-            self.logger.write(simplelogger.INFO, f'[INIT] Serving on {ip}:{port}',
-                              to_stdout=True)
+            self.logger.write(simplelogger.INFO, f'[INIT] Serving on {ip}:{port}')
 
         try:
             self.epoll_server.start(threaded=threaded)
-            self.logger.write(simplelogger.INFO, f'[INIT] Serving on {ip}:{port}',
-                              to_stdout=True)
+            self.logger.write(simplelogger.INFO, f'[INIT] Serving on {ip}:{port}')
         except KeyboardInterrupt:
-            self.logger.write(simplelogger.INFO, '[STOPPING] Stopping web-server...',
-                              to_stdout=True)
+            self.logger.write(simplelogger.INFO, '[STOPPING] Stopping web-server...')
         except OSError as oserror_exc:
-            self.logger.write(simplelogger.CRITICAL, '[STOPPING] OSError occurred during server work, '
-                                                     'stopping webserver silently',
-                              to_stdout=True)
+            self.logger.write(simplelogger.CRITICAL, '[STOPPING] OSError occurred during server '
+                                                     'work, stopping webserver silently')
 
             if oserror_exc.errno == 24:
-                self.logger.write(simplelogger.WARNING, '[STOPPING] Problem was caused by lack of descriptors. '
-                                                        'Try to set more available opened files using '
-                                                        '"ulimit -Sn <value>", where value is integer or '
-                                                        '"unlimited"',
-                                  to_stdout=True)
+                self.logger.write(simplelogger.WARNING, '[STOPPING] Problem was caused by lack of '
+                                                        'descriptors. Try to set more available '
+                                                        'opened files using "ulimit -Sn <value>", '
+                                                        'where value is integer or "unlimited"')
         except Exception as exc:
-            self.logger.write(simplelogger.CRITICAL, '[STOPPING] An unhandled exception occurred:',
-                              to_stdout=True)
-            self.logger.write(simplelogger.CRITICAL, format_exc(),
-                              to_stdout=True, time_format='')
+            self.logger.write(simplelogger.CRITICAL, '[STOPPING] An unhandled exception occurred:')
+            self.logger.write(simplelogger.CRITICAL, format_exc(), time_format='')
             self.logger.write(simplelogger.CRITICAL, '[STOPPING] Open an issue on '
                                                      'https://github.com/floordiv/rush/issues '
-                                                     'if you think it\'s a bug',
-                              to_stdout=True)
+                                                     'if you think it\'s a bug')
 
         self.stop()
 
@@ -218,29 +208,27 @@ class WebServerCore:
 
 
 class WebServer:
-    def __init__(self, addr=('0.0.0.0', 9090), maxconns_from_ulimit=True,
-                 workers=1, debug_mode=True):
+    def __init__(self, addr=('0.0.0.0', 9090), maxconns_from_ulimit=True, debug_mode=True):
         self.webserver = WebServerCore(addr=addr, debug_mode=debug_mode,
                                        max_conns_from_ulimit=maxconns_from_ulimit)
+        self.loader = self.webserver.loader
 
-    def filter(self, func):
+    def route(self, path='/', func=None, methods=None):
         def wrapper(handler):
-            self.webserver.add_handler(handler, func)
+            handler_entity = Handler(handler, path, methods or ['*'], func)
+            self.webserver.add_handler(handler_entity)
 
             return handler
 
         return wrapper
 
-    def route(self, path='/'):
-        def wrapper(handler):
-            self.webserver.add_route(handler, path)
+    def not_found_handler(self, methods=None):
+        def wrapper(func):
+            self.webserver.extra_actions_handlers['not-found'] = func
 
-            return handler
+            return func
 
         return wrapper
-
-    def set_404_page(self, content):
-        self.webserver.set_404_page(content)
 
     def add_redirect(self, old, new):
         self.webserver.add_redirect(old, new)
