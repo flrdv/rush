@@ -99,6 +99,14 @@ class EpollServer:
     def modify(self, fd, for_event):
         self.epoll.modify(fd, EPOLLSERVEREVENTS2EPOLLEVENTS[for_event])
 
+    def direct_modify(self, fd, event):
+        """
+        Same as EpollServer.modify(), but instead of using internal epollserver.<EVENT>,
+        using directly select.<EVENT>
+        """
+
+        self.epoll.modify(fd, event)
+
     def start(self, threaded=False, conn_signals=select.EPOLLIN):
         if self._running:
             raise RuntimeError('server already started')
