@@ -3,10 +3,10 @@ Simple own logger, made cause I'm bicycler and I like to write
 my own variants of different libraries
 """
 
-from os import mkdir
 from sys import stdout
 from threading import Thread
 from datetime import datetime
+from os import path, makedirs
 from queue import Queue, Empty
 from os.path import isfile, dirname
 
@@ -14,12 +14,13 @@ from os.path import isfile, dirname
 _loggers = {}
 DEFAULT_DATE_BLOCK = '[%a, %d %b, %H:%M:%S.%f] '
 
-DEBUG = 0
-INFO = 1
-WARNING = 2
-ERROR = 3
-CRITICAL = 4
-DISABLE = 10    # maximal level that disables any levels above
+ALL = 0
+DEBUG = 1
+INFO = 2
+WARNING = 3
+ERROR = 4
+CRITICAL = 5
+DISABLE = 999    # maximal level that disables any levels above
 LOGLEVELS_STRINGIFIED = (
     'DEBUG',
     'INFO',
@@ -27,6 +28,8 @@ LOGLEVELS_STRINGIFIED = (
     'ERROR',
     'CRITICAL'
 )
+
+global_log_level = ALL
 
 
 class Logger:
@@ -46,9 +49,14 @@ class Logger:
         try:
             self.fd = open(self.filename, 'a')
         except FileNotFoundError:
+            file_dirname = path.dirname(self.filename)
+
+            if file_dirname and not path.isdir(file_dirname):
+                makedirs(file_dirname)
+
             self.fd = open(self.filename, 'w')
 
-        self.minimal_loglevel = DEBUG
+        self.minimal_loglevel = global_log_level
         self.log_entries = Queue()
 
     def write(self, text, loglevel=DEBUG, time_format=DEFAULT_DATE_BLOCK,
