@@ -28,11 +28,7 @@ def process_worker(handlers, err_handlers: dict, requests_queue: Queue):
     request = Request()
 
     while True:
-        try:
-            body, conn, parser = requests_queue.get()
-        except Empty:
-            continue
-
+        body, conn, parser = requests_queue.get()
         rebuild_request_object(request, body, conn, parser)
         handler = pick_handler(handlers, request)
 
