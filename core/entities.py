@@ -4,9 +4,9 @@ class Handler:
         self.func = func
         self.filter = filter_
         self.path_route = path_route.rstrip('/')
-        self.methods = methods or ['GET', 'HEAD', 'POST', 'PUT',
+        self.methods = methods or {'GET', 'HEAD', 'POST', 'PUT',
                                    'DELETE', 'CONNECT', 'OPTIONS',
-                                   'TRACE', 'PATCH']
+                                   'TRACE', 'PATCH'}
 
 
 class Request:
