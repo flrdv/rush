@@ -9,7 +9,17 @@ from core.entities import Handler, Request
 logger = simplelogger.Logger('handlers', filename='logs/handlers.log')
 
 
-def process_worker(handlers, extra_handlers: dict, requests_queue: Queue):
+def err_handler_wrapper(err_handler_type, func, request):
+    try:
+        func(request)
+    except Exception:
+        logger.write(f'[ERROR-HANDLER] Caught an unhandled exception in {err_handler_type} '
+                     f'handler (function name: {func.__name__}):',
+                     simplelogger.ERROR)
+        logger.write(format_exc(), simplelogger.ERROR, time_format='')
+
+
+def process_worker(handlers, err_handlers: dict, requests_queue: Queue):
     """
     Function that infinitely running. Getting request from requests_queue and
     calling a handler that matches a request
@@ -27,25 +37,23 @@ def process_worker(handlers, extra_handlers: dict, requests_queue: Queue):
         handler = pick_handler(handlers, request)
 
         if handler is None:
-            extra_handlers['not-found'](request)
+            err_handlers['not-found'](request)
             continue
 
         try:
             handler.func(request)
-        except Exception as exc:
-            logger.write(f'an uncaught error occurred in handler called "{handler.__name__}":',
+        except Exception:
+            logger.write(f'[ERROR-HANDLER] Caught an unhandled exception in '
+                         f'handler (function name: {handler.__name__}):',
                          simplelogger.ERROR)
             logger.write(format_exc(), simplelogger.ERROR, time_format='')
 
-            # TODO: do not forget to wrap all the extra-handlers into some safety wrapper
-            #       that will catch all the exceptions in extra-handlers to avoid process
-            #       dying because of error in extra-handler
-            extra_handlers['internal-error'](request, format_exc())
+            # TODO: do not forget to wrap all the extra-handlers with extra_handler_wrapper
+            err_handlers['internal-error'](request)
 
 
 def rebuild_request_object(old_obj: Request, body, conn, parser: HttpParser):
-    major, minor = parser.get_version()
-    old_obj.build(protocol=f'HTTP/{major}.{minor}',
+    old_obj.build(protocol=parser.get_version(),
                   method=parser.get_method(),
                   path=parser.get_path(),
                   headers=parser.get_headers(),
