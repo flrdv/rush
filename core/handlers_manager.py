@@ -7,8 +7,8 @@ from http_parser.http import HttpParser
 from core.entities import Handler, Request
 
 logging.basicConfig(filename='logs/handlers.log', level=logging.DEBUG,
-                    format='[%(asctime)s] [%(levelname)s] %(message)s')
-logger = logging.getLogger('handler')
+                    format='[%(asctime)s] [%(levelname)s] %(name)s: %(message)s')
+logger = logging.getLogger(__name__)
 
 
 def err_handler_wrapper(err_handler_type, func, request):
@@ -20,13 +20,14 @@ def err_handler_wrapper(err_handler_type, func, request):
         logger.exception(format_exc())
 
 
-def process_worker(handlers, err_handlers: dict, requests_queue: Queue):
+def process_worker(http_server, handlers, err_handlers: dict,
+                   requests_queue: Queue):
     """
     Function that infinitely running. Getting request from requests_queue and
     calling a handler that matches a request
     """
 
-    request = Request()
+    request = Request(http_server)
 
     while True:
         body, conn, parser = requests_queue.get()
