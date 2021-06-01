@@ -1,22 +1,23 @@
+import logging
+from queue import Queue
 from typing import Iterable
-from queue import Queue, Empty
 from traceback import format_exc
 from http_parser.http import HttpParser
 
-from lib import simplelogger
 from core.entities import Handler, Request
 
-logger = simplelogger.Logger('handlers', filename='logs/handlers.log')
+logging.basicConfig(filename='logs/handlers.log', level=logging.DEBUG,
+                    format='[%(asctime)s] [%(levelname)s] %(message)s')
+logger = logging.getLogger('handler')
 
 
 def err_handler_wrapper(err_handler_type, func, request):
     try:
         func(request)
-    except Exception:
-        logger.write(f'[ERROR-HANDLER] Caught an unhandled exception in {err_handler_type} '
-                     f'handler (function name: {func.__name__}):',
-                     simplelogger.ERROR)
-        logger.write(format_exc(), simplelogger.ERROR, time_format='')
+    except Exception as exc:
+        logger.error(f'[ERROR-HANDLER] Caught an unhandled exception in {err_handler_type} '
+                     f'handler (function name: {func.__name__}): {exc} (see full trace below)')
+        logger.exception(format_exc())
 
 
 def process_worker(handlers, err_handlers: dict, requests_queue: Queue):
@@ -38,11 +39,10 @@ def process_worker(handlers, err_handlers: dict, requests_queue: Queue):
 
         try:
             handler.func(request)
-        except Exception:
-            logger.write(f'[ERROR-HANDLER] Caught an unhandled exception in '
-                         f'handler (function name: {handler.__name__}):',
-                         simplelogger.ERROR)
-            logger.write(format_exc(), simplelogger.ERROR, time_format='')
+        except Exception as exc:
+            logger.error('[ERROR-HANDLER] Caught an unhandled exception in handler (function name: '
+                         f'{handler.__name__}): {exc} (see full trace below)')
+            logger.exception(format_exc())
 
             # TODO: do not forget to wrap all the extra-handlers with extra_handler_wrapper
             err_handlers['internal-error'](request)
