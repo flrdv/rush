@@ -15,7 +15,7 @@ class Request:
     but build() is working like a constructor
     """
 
-    def __init__(self):
+    def __init__(self, http_server):
         self.protocol = None
         self.method = None
         self.path = None
@@ -23,6 +23,8 @@ class Request:
         self.body = None
         self.conn = None
         self.file = None
+
+        self._http_server = http_server
 
     def build(self, protocol, method, path,
               headers, body, conn, file):
@@ -33,3 +35,14 @@ class Request:
         self.body = body
         self.conn = conn
         self.file = file
+
+    def response(self, data: bytes):
+        """
+        Proxy function for HttpServer.send
+
+        `data` has to be bytes-like, otherwise error in handler will occur
+        if user wants to response with http, he should just call http response
+        renderer function as an argument
+        """
+
+        self._http_server.send(data)
