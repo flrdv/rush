@@ -35,8 +35,8 @@ class WebServer:
 
         self.handlers = []
         self.err_handlers = {
-            'not-found': None,
-            'internal-error': None
+            'not-found': utils.default_err_handlers.not_found,
+            'internal-error': utils.default_err_handlers.internal_error,
         }
 
         self.process_workers: List[Process] = []
