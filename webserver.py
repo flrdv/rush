@@ -4,7 +4,7 @@ from socket import socket
 from traceback import format_exc
 from multiprocessing import cpu_count, Process
 
-from core import server, handlers_manager, entities, utils
+from core import server, process_workers as process_workers_lib, entities, utils
 
 if not utils.termutils.is_linux():
     raise RuntimeError('Rush-webserver is only for linux. Ave Maria!')
@@ -56,9 +56,9 @@ class WebServer:
         logger.info(f'starting {self.process_workers_count} process workers')
 
         for _ in range(self.process_workers_count):
-            process = Process(target=handlers_manager.process_worker, args=(self.http_server,
-                                                                            self.handlers,
-                                                                            self.err_handlers))
+            process = Process(target=process_workers_lib.process_worker, args=(self.http_server,
+                                                                               self.handlers,
+                                                                               self.err_handlers))
             self.process_workers.append(process)
             process.start()
             logger.debug(f'started process worker {process.ident} with pid {process.pid}')
@@ -86,4 +86,3 @@ class WebServer:
 
     def __del__(self):
         self.stop()
-
