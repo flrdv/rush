@@ -1,3 +1,6 @@
+from core.utils import httputils
+
+
 class Handler:
     def __init__(self, func, filter_, path_route,
                  methods):
@@ -36,7 +39,12 @@ class Request:
         self.conn = conn
         self.file = file
 
-    def response(self, data: bytes):
+    def response(self, code, description=None, body=b'',
+                 headers=None):
+        self._http_server.send(httputils.render_http_response(self.protocol, code, description,
+                                                              headers, body))
+
+    def raw_response(self, data: bytes):
         """
         Proxy function for HttpServer.send
 
