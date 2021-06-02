@@ -45,7 +45,6 @@ def process_worker(http_server, handlers, err_handlers: dict,
                          f'{handler.__name__}): {exc} (see full trace below)')
             logger.exception(format_exc())
 
-            # TODO: do not forget to wrap all the extra-handlers with extra_handler_wrapper
             err_handlers['internal-error'](request)
 
 
