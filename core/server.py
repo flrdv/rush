@@ -14,7 +14,7 @@ QUEUE_SIZE = 1000
 
 
 class HttpServer:
-    def __init__(self, sock, max_clients):
+    def __init__(self, sock, max_conns):
         """
         Basic http server built on lib.epollserver
 
@@ -23,7 +23,7 @@ class HttpServer:
                                                      parser: http_parser.http.HttpParser)
         """
 
-        self.epollserver = epollserver.EpollServer(sock, maxconns=max_clients)
+        self.epollserver = epollserver.EpollServer(sock, maxconns=max_conns)
         self.epollserver.add_handler(self._connect_handler, epollserver.CONNECT)
         self.epollserver.add_handler(self._disconnect_handler, epollserver.DISCONNECT)
         self.epollserver.add_handler(self._receive_handler, epollserver.RECEIVE)
@@ -77,3 +77,6 @@ class HttpServer:
             self.epollserver.direct_modify(conn, EPOLLIN | EPOLLOUT)
 
         self._responses_buff[conn] += data
+
+    def start(self):
+        self.epollserver.start(threaded=False)
