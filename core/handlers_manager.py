@@ -1,5 +1,4 @@
 import logging
-from queue import Queue
 from typing import Iterable
 from traceback import format_exc
 from http_parser.http import HttpParser
@@ -18,7 +17,8 @@ def err_handler_wrapper(err_handler_type, func, request):
         logger.exception(format_exc())
 
 
-def process_worker(http_server, handlers, err_handlers: dict):
+def process_worker(http_server, handlers, err_handlers: dict,
+                   redirects: dict):
     """
     Function that infinitely running. Getting request from requests_queue and
     calling a handler that matches a request
@@ -31,6 +31,11 @@ def process_worker(http_server, handlers, err_handlers: dict):
     while True:
         body, conn, parser = requests_queue.get()
         rebuild_request_object(request, body, conn, parser)
+
+        if request.path in redirects:
+            request.response(301, headers={'Location': redirects[request.path]})
+            continue
+
         handler = pick_handler(handlers, request)
 
         if handler is None:
