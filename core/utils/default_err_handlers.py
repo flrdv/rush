@@ -5,4 +5,6 @@ def not_found(request):
 
 
 def internal_error(request):
-    ...
+    """
+    TODO: the same as not-found handler
+    """
