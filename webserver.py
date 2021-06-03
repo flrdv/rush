@@ -1,8 +1,9 @@
 import logging
 from typing import List
 from socket import socket
+from psutil import cpu_count
 from traceback import format_exc
-from multiprocessing import cpu_count, Process
+from multiprocessing import Process
 
 from core import server, process_workers as process_workers_lib, entities, utils
 
@@ -21,7 +22,9 @@ logger = logging.getLogger(__name__)
 class WebServer:
     def __init__(self, addr, max_conns=None, process_workers=None):
         if process_workers is None:
-            process_workers = cpu_count()
+            # logical=True: processor threads
+            # logical=False: processor cores
+            process_workers = cpu_count(logical=True)
 
         self.process_workers_count = process_workers
 
@@ -61,7 +64,7 @@ class WebServer:
                                                                                self.err_handlers))
             self.process_workers.append(process)
             process.start()
-            logger.debug(f'started process worker {process.ident} with pid {process.pid}')
+            logger.debug(f'started process worker ident:{process.ident} with pid {process.pid}')
 
         logger.info('running http server')
 
@@ -79,7 +82,7 @@ class WebServer:
         logger.info('terminating process workers')
 
         for process in self.process_workers:
-            logger.debug(f'terminating process {process.ident} with pid {process.pid}')
+            logger.debug(f'terminating process ident:{process.ident} with pid {process.pid}')
             process.terminate()
 
         logger.info('process workers has been terminated. Good bye')
