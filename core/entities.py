@@ -18,7 +18,7 @@ class Request:
     but build() is working like a constructor
     """
 
-    def __init__(self, http_server):
+    def __init__(self, http_server, loader):
         self.protocol = None
         self.method = None
         self.path = None
@@ -28,6 +28,7 @@ class Request:
         self.file = None
 
         self._http_server = http_server
+        self.loader = loader
 
     def build(self, protocol, method, path,
               headers, body, conn, file):
@@ -43,6 +44,16 @@ class Request:
                  headers=None):
         self._http_server.send(httputils.render_http_response(self.protocol, code, description,
                                                               headers, body))
+
+    def response_file(self, filename):
+        """
+        Loads file from loader. If file not found, rush.utils.exceptions.NotFound exception will be raised
+        and processed by process worker
+        """
+
+        body = self.loader.load(filename)
+
+        self.response(200, body=body)
 
     def raw_response(self, data: bytes):
         """
