@@ -45,7 +45,7 @@ class Request:
         self._http_server.send(httputils.render_http_response(self.protocol, code, description,
                                                               headers, body))
 
-    def response_file(self, filename):
+    def response_file(self, filename, **kwargs):
         """
         Loads file from loader. If file not found, rush.utils.exceptions.NotFound exception will be raised
         and processed by process worker
@@ -53,7 +53,7 @@ class Request:
 
         body = self.loader.load(filename)
 
-        self.response(200, body=body)
+        self.response(200, body=body, **kwargs)
 
     def raw_response(self, data: bytes):
         """
