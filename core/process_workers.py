@@ -3,6 +3,7 @@ from typing import Iterable
 from traceback import format_exc
 from http_parser.http import HttpParser
 
+from utils.exceptions import NotFound
 from core.entities import Handler, Request
 
 logger = logging.getLogger(__name__)
@@ -17,16 +18,19 @@ def err_handler_wrapper(err_handler_type, func, request):
         logger.exception(format_exc())
 
 
-def process_worker(http_server, handlers, err_handlers: dict,
-                   redirects: dict):
+def process_worker(http_server, loader, handlers,
+                   err_handlers: dict, redirects: dict):
     """
     Function that infinitely running. Getting request from requests_queue and
     calling a handler that matches a request
     """
 
-    request = Request(http_server)
+    request = Request(http_server, loader)
     # bind to avoid getting attribute of class instance every single request
     requests_queue = http_server.requests
+    # some hardcoded binds for err handlers
+    not_found_handler = err_handlers['not-found']
+    internal_error_handler = err_handlers['internal-error']
 
     while True:
         body, conn, parser = requests_queue.get()
@@ -39,17 +43,19 @@ def process_worker(http_server, handlers, err_handlers: dict,
         handler = pick_handler(handlers, request)
 
         if handler is None:
-            err_handlers['not-found'](request)
+            not_found_handler(request)
             continue
 
         try:
             handler.func(request)
+        except NotFound:
+            not_found_handler(request)
         except Exception as exc:
             logger.error('[ERROR-HANDLER] Caught an unhandled exception in handler (function name: '
                          f'{handler.__name__}): {exc} (see full trace below)')
             logger.exception(format_exc())
 
-            err_handlers['internal-error'](request)
+            internal_error_handler(request)
 
 
 def rebuild_request_object(old_obj: Request, body, conn, parser: HttpParser):
