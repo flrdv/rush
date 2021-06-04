@@ -1,5 +1,5 @@
 import logging
-from typing import List
+from typing import List, Dict
 from socket import socket
 from psutil import cpu_count
 from traceback import format_exc
@@ -20,8 +20,9 @@ logger = logging.getLogger(__name__)
 
 
 class WebServer:
-    def __init__(self, ip='localhost', port=8000,
-                 max_conns=None, process_workers=None):
+    def __init__(self, ip='localhost', port=8000, max_conns=None,
+                 process_workers=None, loader_impl=None, cache_impl=None,
+                 sources_root='localfiles'):
         self.addr = (ip, port)
 
         if process_workers is None:
@@ -44,8 +45,13 @@ class WebServer:
             'not-found': utils.default_err_handlers.not_found,
             'internal-error': utils.default_err_handlers.internal_error,
         }
+        self.server_events_callbacks: Dict[callable or None] = {
+            'on-startup': None,
+            'on-shutdown': None,
+        }
 
         self.process_workers: List[Process] = []
+        self.loader = (loader_impl or utils.loader.Loader)(cache_impl, root=sources_root)
 
     def route(self, path, methods=None, filter_=None):
         def decorator(func):
@@ -66,7 +72,23 @@ class WebServer:
 
         return wrapper
 
+    def on_startup(self, func):
+        self.server_events_callbacks['on-startup'] = func
+
+        return func
+
+    def on_shutdown(self, func):
+        self.server_events_callbacks['on-shutdown'] = func
+
+        return func
+
     def start(self):
+        on_startup_event_callback = self.server_events_callbacks['on-startup']
+
+        if on_startup_event_callback is not None:
+            logger.debug('found on-startup server event callback')
+            on_startup_event_callback(self.loader)
+
         logger.info(f'starting {self.process_workers_count} process workers')
 
         for _ in range(self.process_workers_count):
@@ -84,12 +106,19 @@ class WebServer:
             self.http_server.start()
         except (KeyboardInterrupt, SystemExit, EOFError):
             logger.info('aborted by user')
-            self.stop()
         except Exception as exc:
             logger.error(f'an error occurred while running http server: {exc} (see detailed trace below)')
             logger.exception(format_exc())
 
+        self.stop()
+
     def stop(self):
+        on_shutdown_event_callback = self.server_events_callbacks['on-shutdown']
+
+        if on_shutdown_event_callback is not None:
+            logger.debug('found on-shutdown server event callback')
+            on_shutdown_event_callback()
+
         logger.info('stopping web-server...')
         logger.info('terminating process workers')
 
