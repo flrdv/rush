@@ -55,6 +55,14 @@ class WebServer:
 
         return decorator
 
+    def err_handler(self, err_type):
+        def wrapper(func):
+            self.err_handlers[err_type] = func
+
+            return func
+
+        return wrapper
+
     def start(self):
         logger.info(f'starting {self.process_workers_count} process workers')
 
