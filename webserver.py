@@ -20,7 +20,10 @@ logger = logging.getLogger(__name__)
 
 
 class WebServer:
-    def __init__(self, addr, max_conns=None, process_workers=None):
+    def __init__(self, ip='localhost', port=8000,
+                 max_conns=None, process_workers=None):
+        self.addr = (ip, port)
+
         if process_workers is None:
             # logical=True: processor threads
             # logical=False: processor cores
@@ -32,7 +35,7 @@ class WebServer:
             max_conns = utils.termutils.get_max_descriptors()
 
         sock = socket()
-        utils.sockutils.bind_sock(logger, sock, addr)
+        utils.sockutils.bind_sock(logger, sock, self.addr)
 
         self.http_server = server.HttpServer(sock, max_conns)
 
@@ -74,7 +77,8 @@ class WebServer:
             process.start()
             logger.debug(f'started process worker ident:{process.ident} with pid {process.pid}')
 
-        logger.info('running http server')
+        ip, port = self.addr
+        logger.info(f'* running http server on {ip}:{port}')
 
         try:
             self.http_server.start()
