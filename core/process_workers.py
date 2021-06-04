@@ -70,7 +70,7 @@ def rebuild_request_object(old_obj: Request, body, conn, parser: HttpParser):
 
 def pick_handler(handlers: Iterable[Handler], request):
     for handler in handlers:
-        if handler.path_route != request.path:
+        if handler.path_route not in {request.path, '*'}:
             continue
 
         if request.method not in handler.methods:
