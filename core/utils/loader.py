@@ -3,6 +3,7 @@ import logging
 from threading import Thread
 
 import inotify.adapters
+from utils.exceptions import NotFound
 from inotify.constants import IN_MODIFY
 
 logger = logging.getLogger(__name__)
@@ -18,19 +19,25 @@ content_types = {
 
 
 class Loader:
-    def __init__(self, root='localfiles'):
-        self.root = os.path.join(root, '')
-        self.cache = AutoUpdatingCache(self.root)
+    def __init__(self, cache_impl, root='localfiles'):
+        self.root = root
+        self.cache = (cache_impl or AutoUpdatingCache)(self.root)
         self.cache.start()
 
         self.cached_files = []
 
     def load(self, filename, cache=True):
+        if filename == '/':
+            filename = '/index.html'
+
         if self.root + filename in self.cache.cached_files:
             return self.cache.get(filename)
 
-        with open(self.root + filename, 'rb') as fd:
-            content = fd.read()
+        try:
+            with open(self.root + filename, 'rb') as fd:
+                content = fd.read()
+        except FileNotFoundError:
+            raise NotFound
 
         if cache:
             self.cache.add(self.root + filename, content)
@@ -39,8 +46,11 @@ class Loader:
 
     def cache(self, *files):
         for file in files:
-            with open(self.root + file, 'rb') as fd:
-                self.cache.add(self.root + file, fd.read())
+            try:
+                with open(self.root + file, 'rb') as fd:
+                    self.cache.add(self.root + file, fd.read())
+            except FileNotFoundError:
+                logger.error(f'trying to cache non-existing file: {self.root + file}')
 
 
 class AutoUpdatingCache:
