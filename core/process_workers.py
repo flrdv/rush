@@ -1,7 +1,6 @@
 import logging
 from typing import Iterable
 from traceback import format_exc
-from http_parser.http import HttpParser
 
 from utils.exceptions import NotFound
 from core.entities import Handler, Request
@@ -31,13 +30,21 @@ def process_worker(http_server, loader, handlers,
     # some hardcoded binds for err handlers
     not_found_handler = err_handlers['not-found']
     internal_error_handler = err_handlers['internal-error']
+    print('running process worker!')
 
     while True:
-        body, conn, parser = requests_queue.get()
-        rebuild_request_object(request, body, conn, parser)
+        print('waiting for a request..')
+        body, conn, (proto_version, method, path, headers) = requests_queue.get()
+        request.build(protocol=proto_version,
+                      method=method,
+                      path=path,
+                      headers=headers,
+                      body=body,
+                      conn=conn,
+                      file=None)
 
-        if request.path in redirects:
-            request.response(301, headers={'Location': redirects[request.path]})
+        if path in redirects:
+            request.response(301, headers={'Location': redirects[path]})
             continue
 
         handler = pick_handler(handlers, request)
@@ -52,20 +59,10 @@ def process_worker(http_server, loader, handlers,
             not_found_handler(request)
         except Exception as exc:
             logger.error('[ERROR-HANDLER] Caught an unhandled exception in handler (function name: '
-                         f'{handler.__name__}): {exc} (see full trace below)')
+                         f'{handler.func.__name__}): {exc} (see full trace below)')
             logger.exception(format_exc())
 
             internal_error_handler(request)
-
-
-def rebuild_request_object(old_obj: Request, body, conn, parser: HttpParser):
-    old_obj.build(protocol=parser.get_version(),
-                  method=parser.get_method(),
-                  path=parser.get_path(),
-                  headers=parser.get_headers(),
-                  body=body,
-                  conn=conn,
-                  file=None)
 
 
 def pick_handler(handlers: Iterable[Handler], request):
