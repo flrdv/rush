@@ -20,9 +20,9 @@ content_types = {
 
 class Loader:
     def __init__(self, cache_impl, root='localfiles'):
-        self.root = root
-        self.cache = (cache_impl or AutoUpdatingCache)(self.root)
-        self.cache.start()
+        self.root = os.path.join(root, '')
+        self._cache = (cache_impl or AutoUpdatingCache)(self.root)
+        self._cache.start()
 
         self.cached_files = []
 
@@ -30,8 +30,8 @@ class Loader:
         if filename == '/':
             filename = '/index.html'
 
-        if self.root + filename in self.cache.cached_files:
-            return self.cache.get(filename)
+        if self.root + filename in self._cache.cached_files:
+            return self._cache.get(filename)
 
         try:
             with open(self.root + filename, 'rb') as fd:
@@ -40,15 +40,15 @@ class Loader:
             raise NotFound
 
         if cache:
-            self.cache.add(self.root + filename, content)
+            self._cache.add(self.root + filename, content)
 
         return content
 
-    def cache(self, *files):
+    def cache_files(self, *files):
         for file in files:
             try:
                 with open(self.root + file, 'rb') as fd:
-                    self.cache.add(self.root + file, fd.read())
+                    self._cache.add(self.root + file, fd.read())
             except FileNotFoundError:
                 logger.error(f'trying to cache non-existing file: {self.root + file}')
 
