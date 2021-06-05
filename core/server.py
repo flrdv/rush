@@ -3,7 +3,7 @@ Internal module for http interacting. All the functions, methods, etc. should be
 proxied
 """
 
-from queue import Queue
+from multiprocessing import Queue
 from select import EPOLLIN, EPOLLOUT
 from http_parser.http import HttpParser
 
@@ -40,6 +40,7 @@ class HttpServer:
     def _receive_handler(self, _, conn):
         parser, previously_received_body = self._requests_buff[conn]
         received_body_part = conn.recv(DEFAULT_RECV_BLOCK_SIZE)
+        print('receiving:', received_body_part)
         parser.execute(received_body_part, len(received_body_part))
 
         """
@@ -47,13 +48,19 @@ class HttpServer:
         elif we received part of the body
         """
 
-        if parser.is_message_complete():
-            self.requests.put((previously_received_body + parser.recv_body(), conn, parser))
-            self._requests_buff[conn] = [HttpParser(decompress=True), b'']
-        elif parser.is_partial_body():
+        if parser.is_partial_body():
             self._requests_buff[conn][1] += parser.recv_body()
 
+        if parser.is_message_complete():
+            print('received')
+            self.requests.put((previously_received_body, conn, (parser.get_version(),
+                                                                parser.get_method(),
+                                                                parser.get_path(),
+                                                                parser.get_headers())))
+            self._requests_buff[conn] = [HttpParser(decompress=True), b'']
+
     def _response_handler(self, _, conn):
+        print('responsing')
         bytes_string = self._responses_buff[conn]
         bytes_sent = conn.send(bytes_string)
         new_bytes_string = bytes_string[:bytes_sent]
@@ -63,12 +70,14 @@ class HttpServer:
             self.epollserver.direct_modify(conn, EPOLLIN)
 
     def _connect_handler(self, _, conn):
+        print('connected')
         # creating cell for conn once to avoid if-conditions in _receive_handler and
         # _response_handler every time receiving new event on socket read/write
         self._requests_buff[conn] = [HttpParser(decompress=True), b'']
         self._responses_buff[conn] = b''
 
     def _disconnect_handler(self, _, conn):
+        print('disconnected')
         self._requests_buff.pop(conn)
         self._responses_buff.pop(conn)
 
