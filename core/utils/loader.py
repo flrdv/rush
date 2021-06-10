@@ -1,9 +1,11 @@
 import os.path
 import logging
 from threading import Thread
+from traceback import format_exc
 
 import inotify.adapters
 from utils.exceptions import NotFound
+from inotify.calls import InotifyError
 from inotify.constants import IN_MODIFY
 
 logger = logging.getLogger(__name__)
@@ -20,7 +22,7 @@ content_types = {
 
 class Loader:
     def __init__(self, cache_impl, root='localfiles'):
-        self.root = os.path.join(root, '')
+        self.root = root
         self._cache = (cache_impl or AutoUpdatingCache)(self.root)
         self._cache.start()
 
@@ -29,26 +31,28 @@ class Loader:
     def load(self, filename, cache=True):
         if filename == '/':
             filename = '/index.html'
+        elif filename[0] != '/':
+            filename = '/' + filename
 
-        if self.root + filename in self._cache.cached_files:
+        if filename in self._cache.cached_files:
             return self._cache.get(filename)
 
-        try:
-            with open(self.root + filename, 'rb') as fd:
-                content = fd.read()
-        except FileNotFoundError:
-            raise NotFound
+        with open(self.root + filename, 'rb') as fd:
+            content = fd.read()
 
         if cache:
-            self._cache.add(self.root + filename, content)
+            self._cache.add(filename, content)
 
         return content
 
     def cache_files(self, *files):
         for file in files:
+            if file[0] != '/':
+                file = '/' + file
+
             try:
                 with open(self.root + file, 'rb') as fd:
-                    self._cache.add(self.root + file, fd.read())
+                    self._cache.add(file, fd.read())
             except FileNotFoundError:
                 logger.error(f'trying to cache non-existing file: {self.root + file}')
 
@@ -75,11 +79,19 @@ class AutoUpdatingCache:
                 logger.info(f'cache: updated file PATH={path} FILENAME={filename}')
 
     def add(self, path_to_file, actual_content):
+        if path_to_file[0] != '/':
+            path_to_file = '/' + path_to_file
+
         if path_to_file in self.cached_files:
             return
 
         self.cached_files[path_to_file] = actual_content
-        self.inotify.add_watch(path_to_file)
+
+        try:
+            self.inotify.add_watch(self.root + path_to_file)
+        except InotifyError as exc:
+            logger.error(f'failed to start watching file {self.root + path_to_file}: {exc}'
+                         f'\nFull traceback: {format_exc()}')
 
     def get(self, path_to_file):
         return self.cached_files[path_to_file]
