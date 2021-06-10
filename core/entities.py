@@ -48,8 +48,8 @@ class Request:
 
     def response_file(self, filename, **kwargs):
         """
-        Loads file from loader. If file not found, rush.utils.exceptions.NotFound exception will be raised
-        and processed by process worker
+        Loads file from loader. If file not found, FileNotFoundError exception
+        will be raised and processed by handlers manager
         """
 
         body = self.loader.load(filename)
@@ -65,4 +65,4 @@ class Request:
         renderer function as an argument
         """
 
-        self._http_server.send(data)
+        self._http_server.send(self.conn, data)
