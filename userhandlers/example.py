@@ -25,6 +25,11 @@ def main_page_handler(request):
     request.response_file('index.html', headers={'Connection': 'close'})
 
 
+@server.route('/egg')
+def egg_handler(request):
+    request.response_file('fuckoff.html', headers={'Connection': 'close'})
+
+
 @server.route('*')
 def any_other_file_handler(request):
     request.response_file(request.path, headers={'Connection': 'close'})
