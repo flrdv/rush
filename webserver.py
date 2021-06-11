@@ -29,25 +29,16 @@ logger = _logging.getLogger(__name__)
 
 class WebServer:
     def __init__(self, ip='localhost', port=8000, max_conns=None,
-                 process_workers=None, loader_impl=None, cache_impl=None,
+                 loader_impl=None, cache_impl=None,
                  sources_root='localfiles', logging=True):
         logger.disabled = not logging
         self.addr = (ip, port)
-
-        # if process_workers is None:
-        #     logical=True: processor threads
-        #     logical=False: processor cores
-            # process_workers = cpu_count(logical=True)
-        #
-        # self.process_workers_count = process_workers
 
         if max_conns is None:
             max_conns = core.utils.termutils.get_max_descriptors()
 
         sock = socket()
         core.utils.sockutils.bind_sock(sock, self.addr)
-
-        self.http_server = core.server.HttpServer(sock, max_conns)
 
         self.handlers = []
         self.err_handlers = {
@@ -62,6 +53,12 @@ class WebServer:
 
         self.process_workers: List[Process] = []
         self.loader = (loader_impl or core.utils.loader.Loader)(cache_impl, root=sources_root)
+
+        self.http_server = core.server.HttpServer(sock, max_conns)
+        handlers_manager = core.handlers.HandlersManager(self.http_server, self.loader,
+                                                         self.handlers, self.err_handlers,
+                                                         self.redirects)
+        self.http_server.on_message_complete_callback = handlers_manager.call_handler
 
     def route(self, path, methods=None, filter_=None):
         if path[0] not in '/*':
@@ -110,15 +107,9 @@ class WebServer:
 
         ip, port = self.addr
         logger.info(f'running http server on {ip}:{port}')
-        Thread(target=self.http_server.start).start()
-        handlers_manager = core.handlers.HandlersManager(self.http_server, self.loader,
-                                                         self.handlers, self.err_handlers,
-                                                         self.redirects)
 
         try:
-            while True:
-                body, conn, parser_data = self.http_server.requests.get()
-                handlers_manager.call_handler(body, conn, *parser_data)
+            self.http_server.run()
         except (KeyboardInterrupt, SystemExit, EOFError):
             logger.info('aborted by user')
         except Exception as exc:
