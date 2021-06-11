@@ -24,6 +24,8 @@ class HttpServer:
                                                      parser: http_parser.http.HttpParser)
         """
 
+        self.on_message_complete_callback = None
+
         self.epollserver = epollserver.EpollServer(sock, maxconns=max_conns)
         self.epollserver.add_handler(self._connect_handler, epollserver.CONNECT)
         self.epollserver.add_handler(self._disconnect_handler, epollserver.DISCONNECT)
@@ -33,8 +35,8 @@ class HttpServer:
         # I'm using http-parser but not parsing just to know when request has been ended
         # anyway I'm putting parser-object to the queue, so no new parsers entities
         # will be created
-        self._requests_buff = {}    # conn: [parser, raw]
-        self._responses_buff = {}   # conn: b'...'
+        self._requests_buff = {}  # conn: [parser, raw]
+        self._responses_buff = {}  # conn: b'...'
 
         self.requests = Queue(maxsize=QUEUE_SIZE)
 
@@ -52,11 +54,9 @@ class HttpServer:
             self._requests_buff[conn][1] += parser.recv_body()
 
         if parser.is_message_complete():
-            # print('received')
-            self.requests.put((previously_received_body, conn, (parser.get_version(),
-                                                                parser.get_method(),
-                                                                parser.get_path(),
-                                                                parser.get_headers())))
+            self.on_message_complete_callback(previously_received_body, conn, parser.get_version(),
+                                              parser.get_method(), parser.get_path(),
+                                              parser.get_headers())
             self._requests_buff[conn] = [HttpParser(decompress=True), b'']
 
     def _response_handler(self, _, conn):
@@ -84,5 +84,8 @@ class HttpServer:
 
         self._responses_buff[conn] += data
 
-    def start(self):
-        self.epollserver.start(threaded=True)
+    def run(self):
+        if self.on_message_complete_callback is None:
+            raise RuntimeError('no callback on message complete provided')
+
+        self.epollserver.start(threaded=False)
