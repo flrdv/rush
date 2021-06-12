@@ -16,7 +16,7 @@ def on_startup(loader):
 
 @server.on_shutdown
 def on_shutdown():
-    logger.info('Server is dying :(')
+    logger.info('Server is shutting down')
 
 
 @server.route('/')
