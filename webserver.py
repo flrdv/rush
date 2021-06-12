@@ -33,9 +33,10 @@ class WebServer:
                  sources_root='localfiles', logging=True):
         logger.disabled = not logging
         self.addr = (ip, port)
+        self.max_conns = max_conns
 
         if max_conns is None:
-            max_conns = core.utils.termutils.get_max_descriptors()
+            self.max_conns = core.utils.termutils.get_max_descriptors()
 
         sock = socket()
         core.utils.sockutils.bind_sock(sock, self.addr)
@@ -54,7 +55,7 @@ class WebServer:
         self.process_workers: List[Process] = []
         self.loader = (loader_impl or core.utils.loader.Loader)(cache_impl, root=sources_root)
 
-        self.http_server = core.server.HttpServer(sock, max_conns)
+        self.http_server = core.server.HttpServer(sock, self.max_conns)
         handlers_manager = core.handlers.HandlersManager(self.http_server, self.loader,
                                                          self.handlers, self.err_handlers,
                                                          self.redirects)
@@ -106,6 +107,7 @@ class WebServer:
             on_startup_event_callback(self.loader)
 
         ip, port = self.addr
+        logger.info(f'set max connections: {self.max_conns}')
         logger.info(f'running http server on {ip}:{port}')
 
         try:
