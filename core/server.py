@@ -4,7 +4,6 @@ proxied
 """
 
 from queue import Queue
-from multiprocessing import Queue as q
 from select import EPOLLIN, EPOLLOUT
 from http_parser.http import HttpParser
 
