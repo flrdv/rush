@@ -10,7 +10,7 @@ from http_parser.http import HttpParser
 from lib import epollserver
 
 DEFAULT_RECV_BLOCK_SIZE = 8192  # how many bytes are receiving per 1 socket read
-QUEUE_SIZE = 1000
+QUEUE_SIZE = 10000
 
 
 class HttpServer:
