@@ -61,8 +61,10 @@ def err_handler_wrapper(err_handler_type, func, request):
 
 
 def _pick_handler(handlers: Iterable[Handler], request):
+    acceptable_handler_paths = {request.path, '*'}
+
     for handler in handlers:
-        if handler.path_route not in {request.path, '*'}:
+        if handler.path_route not in acceptable_handler_paths:
             continue
 
         if request.method not in handler.methods:
