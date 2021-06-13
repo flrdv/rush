@@ -39,7 +39,7 @@ class HttpServer:
 
         self.requests = Queue(maxsize=QUEUE_SIZE)
 
-    def _receive_handler(self, _, conn):
+    def _receive_handler(self, conn):
         parser, previously_received_body = self._requests_buff[conn]
         received_body_part = conn.recv(DEFAULT_RECV_BLOCK_SIZE)
         parser.execute(received_body_part, len(received_body_part))
@@ -58,7 +58,7 @@ class HttpServer:
                                               parser.get_headers())
             self._requests_buff[conn] = [HttpParser(decompress=True), b'']
 
-    def _response_handler(self, _, conn):
+    def _response_handler(self, conn):
         bytes_string = self._responses_buff[conn]
         bytes_sent = conn.send(bytes_string)
         new_bytes_string = bytes_string[bytes_sent:]
@@ -67,13 +67,13 @@ class HttpServer:
         if not new_bytes_string:
             self.epollserver.direct_modify(conn, EPOLLIN)
 
-    def _connect_handler(self, _, conn):
+    def _connect_handler(self, conn):
         # creating cell for conn once to avoid if-conditions in _receive_handler and
         # _response_handler every time receiving new event on socket read/write
         self._requests_buff[conn] = [HttpParser(decompress=True), b'']
         self._responses_buff[conn] = b''
 
-    def _disconnect_handler(self, _, conn):
+    def _disconnect_handler(self, conn):
         self._requests_buff.pop(conn)
         self._responses_buff.pop(conn)
 
