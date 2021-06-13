@@ -40,10 +40,9 @@ class Request:
         self.conn = conn
         self.file = file
 
-    def response(self, code, description=None, body=b'',
-                 headers=None):
+    def response(self, code, body=b'', headers=None, code_desc=None):
         self._http_server.send(self.conn, httputils.render_http_response(self.protocol, code,
-                                                                         description, headers,
+                                                                         code_desc, headers,
                                                                          body))
 
     def response_file(self, filename, **kwargs):
