@@ -7,6 +7,11 @@ class Handler:
         self.func = func
         self.filter = filter_
         self.path_route = path_route.rstrip('/')
+
+        if not self.path_route:
+            # we made a mistake, we fixed a mistake
+            self.path_route = '/'
+
         self.methods = methods or {'GET', 'HEAD', 'POST', 'PUT',
                                    'DELETE', 'CONNECT', 'OPTIONS',
                                    'TRACE', 'PATCH'}
