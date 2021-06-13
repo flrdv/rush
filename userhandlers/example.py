@@ -3,7 +3,7 @@ import logging
 from webserver import WebServer
 
 logger = logging.getLogger('main')
-server = WebServer(port=9090)
+server = WebServer(port=9090, processes=None)
 
 server.add_redirect('/easter', '/egg')
 
