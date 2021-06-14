@@ -1,54 +1,48 @@
-import server as webserver
-from utils.loader import Loader
-from utils.entities import Request, Response
+import logging
 
-"""
-This example is not just example: this is a preview of how
-webserver should be used. Like best usage practises
-"""
+from webserver import WebServer
 
+logger = logging.getLogger('main')
+server = WebServer(port=9090, processes=None)
 
-server = webserver.WebServer(debug_mode=False)
-loader = Loader(caching=True)
-# shitcode just to avoid using loader inside webserver
-server.set_404_page(loader.load('404.html'))
-
-server.add_redirect('/easteregg', '/eggeaster')
-
-loader.cache_files(
-    '/index.html',
-    '/404.html',
-)
+server.add_redirect('/easter', '/egg')
 
 
-"""
-These 2 handlers below are demonstrating 2 different ways
-of solving the same problem. Just a demo
-"""
-
-static_response = Response('HTTP/1.1', 200, 'You found an easter-egg!')
+@server.on_startup
+def on_startup(loader):
+    logger.info('Wow! I\'m on-startup event callback!')
+    loader.cache_files('index.html')
 
 
-@server.route('/easter')
-def routing_handler(request: Request):
-    request.static_response(static_response)
-
-
-@server.filter(func=lambda request: request.path == '/egg')
-def handler_with_filter(request: Request):
-    request.static_response(static_response)
+@server.on_shutdown
+def on_shutdown():
+    logger.info('Server is shutting down')
 
 
 @server.route('/')
-def mainpage(request: Request):
-    content, content_type = loader.load('/index.html')
-    request.response(request.protocol, 200, content, content_type=content_type)
+def main_page_handler(request):
+    request.response_file('index.html')
 
 
-@server.filter(func=lambda request: True)
-def all_other_pages_handler(request: Request):
-    content, content_type = loader.load(request.path, cache=False)
-    request.response(request.protocol, 200, content, content_type=content_type)
+@server.route('/egg')
+def egg_handler(request):
+    request.response_file('fuckoff.html')
+
+
+@server.route('/hello')
+def say_hello(request):
+    # this method call is required if you wanna work with request
+    # query string. This will take a time to parse, but will not
+    # take time if you don't wanna use url parameters
+    request.parse_args()
+    
+    name = request.args.get('name', 'world')
+    request.response(200, f'hello, {name}!')
+
+
+@server.route('*')
+def any_other_file_handler(request):
+    request.response_file(request.path)
 
 
 server.start()

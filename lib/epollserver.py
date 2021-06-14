@@ -1,12 +1,14 @@
 import select
-from functools import reduce
 from threading import Thread
 from traceback import format_exc
 from socket import socket, MSG_PEEK
 
 
 """
-EpollServer(addr: Tuple[str, int], maxconns: int = 0)
+EpollServer(sock, maxconns: int = 0)
+
+sock object should be already bind, EpollServer will automatically 
+call sock.listen() and make it non-blocking
 
 there are 4 types of events:
     CONNECT - on connect to server
@@ -15,11 +17,9 @@ there are 4 types of events:
     RESPONSE - on sending data
     
 to handle the events, you need to have a function that 
-receives only 2 arguments - event_type and conn
-conn is a object of connection (logic) with some events
-event_type is integer to compare with lib's constants
+receives only 1 argument - client's connection
 
-if handler handles connect events, it has to return new conn object
+if handler handles CONNECT event, to deny connection it has to return False
 
 example:
 ```
@@ -29,25 +29,21 @@ epoll_server = epollserver.EpollServer(('localhost', 8080))
 
 
 @epoll_server.handler(on_event=epollserver.CONNECT)
-def connect_handler(_, conn):
+def connect_handler(conn):
     ip, port = conn.getpeername()
     print('new conn:', ip, port)
     
-    # return epollserver.DENY_CONN - if connection shouldn't be processed and
+    # return False - if connection shouldn't be processed and
     # registered in epoll. Use it if you deny connection
-    # also False may be returned and make the same effect
     
 
 # OR
 epoll_server.add_handler(connect_handler, on_event=epollserver.CONNECT)
 
 # and run it (in blocking mode, if option "threaded"
-# is set to False (by default)
+# is set to False (by default))
 epoll_server.start()
 ```
-
-default value of on_event is all (built-in name, yes, but it sounds cool)
-if on_event was not changed, your handler will handle all the events
 """
 
 
@@ -61,9 +57,6 @@ EPOLLSERVER_EVENTS2STR = {
     RECEIVE: 'RECEIVE',
     RESPONSE: 'RESPONSE'
 }
-
-# constant that being returned by conn handler if connection has been refused
-DENY_CONN = 5
 
 EPOLLSERVEREVENTS2EPOLLEVENTS = {
     CONNECT: select.EPOLLIN,
@@ -99,7 +92,15 @@ class EpollServer:
     def modify(self, fd, for_event):
         self.epoll.modify(fd, EPOLLSERVEREVENTS2EPOLLEVENTS[for_event])
 
-    def start(self, threaded=False, conn_signals=select.EPOLLIN):
+    def direct_modify(self, fd, event):
+        """
+        Same as EpollServer.modify(), but instead of using internal epollserver.<EVENT>,
+        using directly select.<EVENT>
+        """
+
+        self.epoll.modify(fd, event)
+
+    def start(self, threaded=False, epoll_events_mask=select.EPOLLIN):
         if self._running:
             raise RuntimeError('server already started')
 
@@ -110,13 +111,7 @@ class EpollServer:
             return server_thread
 
         self._running = True
-
-        if isinstance(conn_signals, (tuple, list)):
-            sock_args = reduce(lambda prev, curr: prev | curr, conn_signals)
-        else:
-            sock_args = conn_signals
-
-        self.epoll.register(self.server_sock.fileno(), sock_args)
+        self.epoll.register(self.server_sock.fileno(), epoll_events_mask)
 
         # _running is also a flag. Server will stop after _running will be set to False
         while self._running:
@@ -124,12 +119,6 @@ class EpollServer:
 
             for fileno, event in events:
                 event_type = self.get_event_type(fileno, event)
-
-                if all in self.handlers:
-                    handler = self.handlers[all]
-                    handler(event_type, self.conns[fileno])
-                    continue
-
                 handler = self.handlers.get(event_type)
 
                 if handler is None:
@@ -139,7 +128,7 @@ class EpollServer:
                 if event_type == CONNECT:
                     conn, addr = self.server_sock.accept()
 
-                    if self.call_handler(handler, CONNECT, conn) in (DENY_CONN, False):
+                    if self.call_handler(handler, CONNECT, conn) is False:
                         # connection hasn't been accepted or exception occurred
                         # nothing will happen if we'll close closed socket
                         conn.close()
@@ -148,7 +137,7 @@ class EpollServer:
                     conn.setblocking(False)
                     conn_fileno = conn.fileno()
                     self.conns[conn_fileno] = conn
-                    self.epoll.register(conn_fileno, sock_args)
+                    self.epoll.register(conn_fileno, epoll_events_mask)
                 elif event_type == DISCONNECT:
                     conn = self.conns.pop(fileno)
                     self.call_handler(handler, DISCONNECT, conn)
@@ -158,18 +147,18 @@ class EpollServer:
 
     def call_handler(self, handler, event_type, conn):
         """
-        A safe way to call handler (catch unhandled exceptions)
+        A safe way to call handler (and catch unhandled exceptions)
         """
 
         try:
-            return handler(event_type, conn)
+            return handler(conn)
         except Exception as exc:
             event_type_stringified = EPOLLSERVER_EVENTS2STR[event_type]
             print('[EPOLLSERVER] Caught an unhandled exception in handler '
                   f'"{handler.__name__}" while handling {event_type_stringified}-event:')
             print(format_exc())
 
-            return DENY_CONN
+            return False
 
     def get_event_type(self, fileno, event):
         if fileno == self.server_sock.fileno():
