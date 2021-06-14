@@ -31,7 +31,13 @@ def egg_handler(request):
 
 @server.route('/hello')
 def say_hello(request):
-    request.response(200, b'hello!')
+    # this method call is required if you wanna work with request
+    # query string. This will take a time to parse, but will not
+    # take time if you don't wanna use url parameters
+    request.parse_args()
+    
+    name = request.args.get('name', 'world')
+    request.response(200, f'hello, {name}!')
 
 
 @server.route('*')
