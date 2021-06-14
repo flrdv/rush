@@ -27,23 +27,27 @@ class Request:
         self.protocol = None
         self.method = None
         self.path = None
+        self._parameters = None
         self.headers = None
         self.body = None
         self.conn = None
         self.file = None
+        self.args = {}
 
         self._http_server = http_server
         self.loader = loader
 
-    def build(self, protocol, method, path,
+    def build(self, protocol, method, path, parameters,
               headers, body, conn, file):
         self.protocol = protocol
         self.method = method
         self.path = path
+        self._parameters = parameters
         self.headers = headers
         self.body = body
         self.conn = conn
         self.file = file
+        self.args.clear()
 
     def response(self, code, body=b'', headers=None, code_desc=None):
         self._http_server.send(self.conn, httputils.render_http_response(self.protocol, code,
@@ -70,3 +74,7 @@ class Request:
         """
 
         self._http_server.send(self.conn, data)
+
+    def parse_args(self):
+        if not self.args and self._parameters:
+            self.args = httputils.parse_qs(self._parameters)
