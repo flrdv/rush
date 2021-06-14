@@ -23,17 +23,18 @@ class HandlersManager:
         self.internal_error_handler = err_handlers['internal-error']
 
     def call_handler(self, body, conn, proto_version,
-                     method, path, headers):
+                     method, path, parameters, headers):
         request_obj = self.request_obj
-        self.request_obj.build(protocol=proto_version,
-                               method=method,
-                               path=path,
-                               headers=headers,
-                               body=body,
-                               conn=conn,
-                               file=None)
+        request_obj.build(protocol=proto_version,
+                          method=method,
+                          path=path,
+                          parameters=parameters,
+                          headers=headers,
+                          body=body,
+                          conn=conn,
+                          file=None)
 
-        if path in self.redirects:
+        if request_obj.path in self.redirects:
             return self.request_obj.response(301, headers={'Location': self.redirects[path]})
 
         handler = _pick_handler(self.handlers, request_obj)
