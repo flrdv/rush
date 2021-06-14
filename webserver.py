@@ -121,10 +121,14 @@ class WebServer:
                 if (child_fork := fork()) != 0:
                     self.forks.append(child_fork)
                     logger.debug(f'fork #{fork_index} with pid {child_fork}')
+            else:
+                # every fork will continue iterating, but this will stop it
+                break
+
+        sock = socket.socket()
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, True)
 
         try:
-            sock = socket.socket()
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, True)
             succeeded = core.utils.sockutils.bind_sock(sock, self.addr,
                                                        disable_logs=not self._i_am_dad_process())
 
