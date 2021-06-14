@@ -54,7 +54,7 @@ class HttpServer:
 
         if parser.is_message_complete():
             self.on_message_complete_callback(previously_received_body, conn, parser.get_version(),
-                                              parser.get_method(), parser.get_path(),
+                                              parser.get_method(), parser.get_path(), parser.get_query_string(),
                                               parser.get_headers())
             self._requests_buff[conn] = [HttpParser(decompress=True), b'']
 
