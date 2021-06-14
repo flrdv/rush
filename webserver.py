@@ -122,9 +122,18 @@ class WebServer:
                     self.forks.append(child_fork)
                     logger.debug(f'fork #{fork_index} with pid {child_fork}')
 
-        sock = socket.socket()
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, True)
-        core.utils.sockutils.bind_sock(sock, self.addr, disable_logs=not self._i_am_dad_process())
+        try:
+            sock = socket.socket()
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, True)
+            succeeded = core.utils.sockutils.bind_sock(sock, self.addr,
+                                                       disable_logs=not self._i_am_dad_process())
+
+            if not succeeded:
+                logger.error('failed to bind server: retries limit exceeded')
+                return
+        except (KeyboardInterrupt, SystemExit, EOFError):
+            logger.error('failed to bind server: aborted by user')
+            return
 
         if self._i_am_dad_process():
             logger.info(f'running http server on {ip}:{port}')
