@@ -16,6 +16,7 @@ Full requirements:
 - Linux 3.9+
 - Installed packages:
   - `inotify` (for smart cache)
+- Environment variable `PYTHONPATH` set to rush/ folder (that contains source code of web-server)
 
 In first public beta-release, I'll try to use `selectors` to get rid of platform-dependency on Linux and make web-server cross-platform. But I'm not sure, I don't really know how does this lib works
 
