@@ -28,5 +28,5 @@ Current perfomance:
  ---
  
  Contacts:
-  - I always check my [Telegram](https://t.me/floordiv)
+  - I always check my [Telegram](https://t.me/floordiv) (or just by username: @floordiv)
     - My native language is _Russian_, but you can talk with me in _English_
