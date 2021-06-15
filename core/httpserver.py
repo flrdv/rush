@@ -9,6 +9,7 @@ from http_parser.http import HttpParser
 
 from lib import epollserver
 
+EPOLLIN_AND_EPOLLOUT = EPOLLIN | EPOLLOUT
 DEFAULT_RECV_BLOCK_SIZE = 8192  # how many bytes are receiving per 1 socket read
 QUEUE_SIZE = 10000
 
@@ -79,7 +80,7 @@ class HttpServer:
 
     def send(self, conn, data: bytes):
         if not self._responses_buff[conn]:
-            self.epollserver.direct_modify(conn, EPOLLIN | EPOLLOUT)
+            self.epollserver.direct_modify(conn, EPOLLIN_AND_EPOLLOUT)
 
         self._responses_buff[conn] += data
 
