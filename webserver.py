@@ -118,7 +118,9 @@ class WebServer:
 
         for fork_index in range(self.processes):
             if self._i_am_dad_process():
-                if (child_fork := fork()) != 0:
+                child_fork = fork()
+                
+                if child_fork != 0:
                     self.forks.append(child_fork)
                     logger.debug(f'fork #{fork_index} with pid {child_fork}')
             else:
