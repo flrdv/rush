@@ -3,7 +3,7 @@ from Cython.Build import cythonize
 
 ext = Extension(
     name='httpserver',
-    sources=['pyhttpserver.py']
+    sources=['httpserver.py']
 )
 
 setup(
