@@ -3,14 +3,13 @@ import socket
 import logging as _logging
 from signal import SIGKILL
 
-from psutil import cpu_count
 from typing import List, Dict
 from traceback import format_exc
-from multiprocessing import Process
+from multiprocessing import Process, cpu_count
 
-import core.httpserver
 import core.handlers
 import core.entities
+import core.httpserver
 import core.utils.loader
 import core.utils.termutils
 import core.utils.sockutils
@@ -34,8 +33,8 @@ logger = _logging.getLogger(__name__)
 
 class WebServer:
     def __init__(self, host='localhost', port=8000, max_conns=None,
-                 loader_impl=None, cache_impl=None, sources_root='localfiles',
-                 logging=True, processes=0):
+                 loader=core.utils.loader.Loader, cache=core.utils.loader.AutoUpdatingCache,
+                 sources_root='localfiles', logging=True, processes=0):
         logger.disabled = not logging
 
         if processes is None:
@@ -55,8 +54,7 @@ class WebServer:
         }
         self.redirects = {}
 
-        self.process_workers: List[Process] = []
-        self.loader = (loader_impl or core.utils.loader.Loader)(cache_impl, root=sources_root)
+        self.loader = loader(cache, root=sources_root)
 
         self.addr = (host, port)
 
@@ -111,7 +109,7 @@ class WebServer:
         self.redirects.update(redirects)
 
     def _i_am_dad_process(self):
-        return self.dad == getpid()
+        return self.dad == os.getpid()
 
     def start(self):
         on_startup_event_callback = self.server_events_callbacks['on-startup']
@@ -174,8 +172,8 @@ class WebServer:
         except (KeyboardInterrupt, SystemExit, EOFError):
             logger.info('aborted by user')
         except Exception as exc:
-            logger.error(f'an error occurred while running http server: {exc} (see detailed trace '
-                         'below)')
+            logger.critical(f'an error occurred while running http server: {exc} (see detailed '
+                            'trace below)')
             logger.exception(format_exc())
 
         # if dad-process was killed, all the children will be also killed
