@@ -23,7 +23,7 @@ content_types = {
 class Loader:
     def __init__(self, cache_impl, root='localfiles'):
         self.root = root
-        self._cache = (cache_impl or AutoUpdatingCache)(self.root)
+        self._cache = cache_impl(self.root)
         self._cache.start()
 
         self.cached_files = []
