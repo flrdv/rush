@@ -1,13 +1,7 @@
-import select
-from threading import Thread
-from traceback import format_exc
-from socket import socket, MSG_PEEK
-
-
 """
 EpollServer(sock, maxconns: int = 0)
 
-sock object should be already bind, EpollServer will automatically 
+sock object should be already bind, EpollServer will automatically
 call sock.listen() and make it non-blocking
 
 there are 4 types of events:
@@ -15,8 +9,8 @@ there are 4 types of events:
     DISCONNECT - on disconnect of server
     RECEIVE - on receiving some data
     RESPONSE - on sending data
-    
-to handle the events, you need to have a function that 
+
+to handle the events, you need to have a function that
 receives only 1 argument - client's connection
 
 if handler handles CONNECT event, to deny connection it has to return False
@@ -32,10 +26,10 @@ epoll_server = epollserver.EpollServer(('localhost', 8080))
 def connect_handler(conn):
     ip, port = conn.getpeername()
     print('new conn:', ip, port)
-    
+
     # return False - if connection shouldn't be processed and
     # registered in epoll. Use it if you deny connection
-    
+
 
 # OR
 epoll_server.add_handler(connect_handler, on_event=epollserver.CONNECT)
@@ -46,6 +40,10 @@ epoll_server.start()
 ```
 """
 
+import select
+from threading import Thread
+from traceback import format_exc
+from socket import socket, MSG_PEEK
 
 CONNECT = 0
 DISCONNECT = 1
