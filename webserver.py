@@ -1,7 +1,7 @@
 import socket
 import logging as _logging
 from signal import SIGKILL
-from os import abort, kill, fork, getpid
+from os import abort, kill, fork, getpid, mkdir
 
 from psutil import cpu_count
 from typing import List, Dict
@@ -18,6 +18,13 @@ import core.utils.default_err_handlers
 
 if not core.utils.termutils.is_linux():
     raise RuntimeError('Rush-webserver is only for linux. Ave Maria!')
+
+# idk why but logs/ folder is ignored by git and I cant fix that
+try:
+    mkdir('logs')
+except FileExistsError:
+    # everything is ok
+    pass
 
 _logging.basicConfig(level=_logging.DEBUG,  # noqa
                      format='[%(asctime)s] [%(levelname)s] %(name)s: %(message)s',
