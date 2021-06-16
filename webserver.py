@@ -119,6 +119,12 @@ class WebServer:
             on_startup_event_callback(self.loader)
 
         ip, port = self.addr
+
+        if self.processes and core.utils.termutils.is_wsl():
+            logger.warning('wsl does not supports SO_REUSEPORT socket flag')
+            logger.warning('setting processes count to 0')
+            self.processes = 0
+
         logger.info(f'set max connections: {self.max_conns}')
         logger.info(f'set server processes count: {self.processes}')
         logger.debug(f'dad pid: {self.dad}')
