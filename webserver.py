@@ -136,6 +136,10 @@ class WebServer:
 
         for fork_index in range(self.processes):
             if self._i_am_dad_process():
+                # I could easily use walrus operator here, and that could be much
+                # more beautiful. But backward capability of walrus operator sucks
+                # so I have to use such a primitive and old-style way
+                
                 child_fork = fork()
 
                 if child_fork != 0:
