@@ -36,10 +36,9 @@ logger = _logging.getLogger(__name__)
 
 
 class WebServer:
-    def __init__(self, ip='localhost', port=8000, max_conns=None,
-                 loader_impl=None, cache_impl=None,
-                 sources_root='localfiles', logging=True,
-                 processes=0):
+    def __init__(self, host='localhost', port=8000, max_conns=None,
+                 loader_impl=None, cache_impl=None, sources_root='localfiles',
+                 logging=True, processes=0):
         logger.disabled = not logging
 
         if processes is None:
@@ -62,11 +61,17 @@ class WebServer:
         self.process_workers: List[Process] = []
         self.loader = (loader_impl or core.utils.loader.Loader)(cache_impl, root=sources_root)
 
-        self.addr = (ip, port)
-        self.max_conns = max_conns
+        self.addr = (host, port)
 
-        if max_conns is None:
-            self.max_conns = core.utils.termutils.get_max_descriptors()
+        if max_conns > core.utils.termutils.get_max_descriptors():
+            self.max_conns = core.utils.termutils.set_max_descriptors(max_conns)
+            logger.info('max_conns is less than descriptors available,')
+            logger.info('setting max descriptors count to new value')
+        else:
+            if max_conns is None:
+                max_conns = core.utils.termutils.get_max_descriptors()
+
+            self.max_conns = max_conns
 
         self.dad = getpid()
 
