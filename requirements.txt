@@ -1,3 +1,2 @@
-psutil
 inotify
 http_parser
