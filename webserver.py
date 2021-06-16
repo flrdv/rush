@@ -1,7 +1,7 @@
+import os
 import socket
 import logging as _logging
 from signal import SIGKILL
-from os import abort, kill, fork, getpid, mkdir
 
 from psutil import cpu_count
 from typing import List, Dict
@@ -20,11 +20,8 @@ if not core.utils.termutils.is_linux():
     raise RuntimeError('Rush-webserver is only for linux. Ave Maria!')
 
 # idk why but logs/ folder is ignored by git and I cant fix that
-try:
-    mkdir('logs')
-except FileExistsError:
-    # everything is ok
-    pass
+if not os.path.exists('logs'):
+    os.mkdir('logs')
 
 _logging.basicConfig(level=_logging.DEBUG,  # noqa
                      format='[%(asctime)s] [%(levelname)s] %(name)s: %(message)s',
@@ -73,7 +70,7 @@ class WebServer:
 
             self.max_conns = max_conns
 
-        self.dad = getpid()
+        self.dad = os.getpid()
 
     def route(self, path, methods=None, filter_=None):
         if path[0] not in '/*':
@@ -139,8 +136,8 @@ class WebServer:
                 # I could easily use walrus operator here, and that could be much
                 # more beautiful. But backward capability of walrus operator sucks
                 # so I have to use such a primitive and old-style way
-                
-                child_fork = fork()
+
+                child_fork = os.fork()
 
                 if child_fork != 0:
                     self.forks.append(child_fork)
@@ -186,7 +183,7 @@ class WebServer:
         self.stop()
 
     def stop(self):
-        if getpid() == self.dad:
+        if os.getpid() == self.dad:
             on_shutdown_event_callback = self.server_events_callbacks['on-shutdown']
 
             if on_shutdown_event_callback is not None:
@@ -197,11 +194,11 @@ class WebServer:
                 logger.info('killing server forks')
 
             for child in self.forks:
-                kill(child, SIGKILL)
+                os.kill(child, SIGKILL)
                 logger.debug('killed child: ' + str(child))
 
             logger.info('web-server has been stopped. Good bye')
-            abort()
+            os.abort()
 
     def __del__(self):
         self.stop()
