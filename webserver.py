@@ -58,16 +58,14 @@ class WebServer:
 
         self.addr = (host, port)
 
-        if max_conns > core.utils.termutils.get_max_descriptors():
-            self.max_conns = core.utils.termutils.set_max_descriptors(max_conns)
+        if max_conns is None:
+            max_conns = core.utils.termutils.get_max_descriptors()
+        elif max_conns > core.utils.termutils.get_max_descriptors():
             logger.info('max_conns is less than descriptors available,')
             logger.info('setting max descriptors count to new value')
-        else:
-            if max_conns is None:
-                max_conns = core.utils.termutils.get_max_descriptors()
+            max_conns = core.utils.termutils.set_max_descriptors(max_conns)
 
-            self.max_conns = max_conns
-
+        self.max_conns = max_conns
         self.dad = os.getpid()
 
     def route(self, path, methods=None, filter_=None):
