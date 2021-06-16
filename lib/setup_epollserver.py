@@ -3,7 +3,7 @@ from Cython.Build import cythonize
 
 ext = Extension(
     name='epollserver',
-    sources=['pyepollserver.py']
+    sources=['epollserver.py']
 )
 
 setup(
