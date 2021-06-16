@@ -1,4 +1,4 @@
-from platform import system
+from platform import system, uname
 from subprocess import check_output
 
 
@@ -12,3 +12,7 @@ def get_max_descriptors():
 
 def is_linux():
     return system() == 'Linux'
+
+
+def is_wsl():
+    return 'Microsoft' in uname().release
