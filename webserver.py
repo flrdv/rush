@@ -3,9 +3,9 @@ import socket
 import logging as _logging
 from signal import SIGKILL
 
-from typing import List, Dict
+from typing import Dict
 from traceback import format_exc
-from multiprocessing import Process, cpu_count
+from multiprocessing import cpu_count
 
 import core.handlers
 import core.entities
@@ -127,7 +127,7 @@ class WebServer:
         logger.info(f'set server processes count: {self.processes}')
         logger.debug(f'dad pid: {self.dad}')
 
-        for fork_index in range(self.processes):
+        for fork_index in range(1, self.processes):
             if self._i_am_dad_process():
                 # I could easily use walrus operator here, and that could be much
                 # more beautiful. But backward capability of walrus operator sucks
