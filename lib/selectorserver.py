@@ -101,7 +101,7 @@ class EpollServer:
 
         # _running is also a flag. Server will stop after _running will be set to False
         while self._running:
-            for key, mask in self.polling.select(timeout=1):
+            for key, mask in self.polling.select(timeout=.5):
                 fd = key.fileobj
                 event_type = self.get_event_type(fd, mask)
                 handler = self.handlers.get(event_type)
@@ -113,7 +113,7 @@ class EpollServer:
                 if event_type == CONNECT:
                     conn, addr = self.server_sock.accept()
 
-                    if self.call_handler(handler, CONNECT, conn) is False:
+                    if self.call_handler(handler, conn) is False:
                         # connection hasn't been accepted or exception occurred
                         # nothing will happen if we'll close closed socket
                         conn.close()
@@ -123,14 +123,14 @@ class EpollServer:
                     self.conns.append(fd)
                     self.polling.register(fd, eventsmask)
                 elif event_type == DISCONNECT:
-                    self.call_handler(handler, DISCONNECT, fd)
+                    self.call_handler(handler, fd)
                     # socket will be automatically unregistered from polling (I hope)
                     fd.close()  # noqa
                     self.conns.remove(fd)
                 else:
-                    self.call_handler(handler, event_type, fd)
+                    self.call_handler(handler, fd)
 
-    def call_handler(self, handler, event_type, conn):
+    def call_handler(self, handler, conn):
         """
         A safe way to call handler (and catch unhandled exceptions)
         """
@@ -138,9 +138,8 @@ class EpollServer:
         try:
             return handler(conn)
         except Exception as exc:
-            event_type_stringified = EPOLLSERVER_EVENTS2STR[event_type]
-            logger.exception(f'Caught an unhandled exception in handler "{handler.__name__}" while '
-                             f'handling {event_type_stringified}-event:\n{format_exc()}')
+            logger.exception(f'Caught an unhandled exception in handler "{handler.__name__}":\n' +
+                             format_exc())
 
             return False
 
@@ -173,6 +172,10 @@ class EpollServer:
     def stop(self):
         # max server alive-time after stopping is 1 second
         self._running = False
+
+        for conn in self.conns:
+            conn.close()
+
         self.polling.close()
         self.server_sock.close()
 
