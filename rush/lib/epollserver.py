@@ -41,9 +41,12 @@ epoll_server.start()
 """
 
 import select
+import logging
 from threading import Thread
 from traceback import format_exc
 from socket import socket, MSG_PEEK
+
+logger = logging.getLogger(__name__)
 
 CONNECT = 0
 DISCONNECT = 1
@@ -152,9 +155,8 @@ class EpollServer:
             return handler(conn)
         except Exception as exc:
             event_type_stringified = EPOLLSERVER_EVENTS2STR[event_type]
-            print('[EPOLLSERVER] Caught an unhandled exception in handler '
-                  f'"{handler.__name__}" while handling {event_type_stringified}-event:')
-            print(format_exc())
+            logger.exception(f'Caught an unhandled exception in handler "{handler.__name__}" while '
+                             f'handling {event_type_stringified}-event:\n{format_exc()}')
 
             return False
 
@@ -178,7 +180,7 @@ class EpollServer:
         else:
             raise NotImplementedError('unavailable epoll signal: ' + str(event))
 
-    def handler(self, on_event=all):
+    def handler(self, on_event):
         def decorator(func):
             self.handlers[on_event] = func
 
