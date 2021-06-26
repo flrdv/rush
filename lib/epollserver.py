@@ -180,7 +180,7 @@ class EpollServer:
         else:
             raise NotImplementedError('unavailable epoll signal: ' + str(event))
 
-    def handler(self, on_event=all):
+    def handler(self, on_event):
         def decorator(func):
             self.handlers[on_event] = func
 
