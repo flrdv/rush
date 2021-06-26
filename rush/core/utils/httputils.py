@@ -1,6 +1,6 @@
 import re
 
-from utils.status_codes import status_codes
+from rush.utils.status_codes import status_codes
 
 
 def render_http_response(protocol, status_code, status_code_desc,
@@ -9,7 +9,7 @@ def render_http_response(protocol, status_code, status_code_desc,
     # TODO: add server-time header
     final_headers = {
         'Content-Length': len(body),
-        'Server': 'rush',
+        'Server': 'rush-webserver',
         'Connection': 'keep-alive'
     }
     final_headers.update(headers or {})

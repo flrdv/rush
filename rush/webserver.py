@@ -7,15 +7,11 @@ from typing import Dict
 from traceback import format_exc
 from multiprocessing import cpu_count
 
-import core.handlers
-import core.entities
-import core.httpserver
-import core.utils.loader
-import core.utils.termutils
-import core.utils.sockutils
-import core.utils.default_err_handlers
+from .core import entities, httpserver, handlers
+from .core.utils import (termutils, default_err_handlers, sockutils,
+                             loader as loaderlib)
 
-if not core.utils.termutils.is_linux():
+if not termutils.is_linux():
     raise RuntimeError('Rush-webserver is only for linux. Ave Maria!')
 
 # idk why but logs/ folder is ignored by git and I cant fix that
@@ -33,7 +29,7 @@ logger = _logging.getLogger(__name__)
 
 class WebServer:
     def __init__(self, host='localhost', port=8000, max_conns=None,
-                 loader=core.utils.loader.Loader, cache=core.utils.loader.AutoUpdatingCache,
+                 loader=loaderlib.Loader, cache=loaderlib.AutoUpdatingCache,
                  sources_root='localfiles', logging=True, processes=0):
         logger.disabled = not logging
 
@@ -45,8 +41,8 @@ class WebServer:
 
         self.handlers = []
         self.err_handlers = {
-            'not-found': core.utils.default_err_handlers.not_found,
-            'internal-error': core.utils.default_err_handlers.internal_error,
+            'not-found': default_err_handlers.not_found,
+            'internal-error': default_err_handlers.internal_error,
         }
         self.server_events_callbacks: Dict[callable or None] = {
             'on-startup': None,
@@ -59,11 +55,11 @@ class WebServer:
         self.addr = (host, port)
 
         if max_conns is None:
-            max_conns = core.utils.termutils.get_max_descriptors()
-        elif max_conns > core.utils.termutils.get_max_descriptors():
+            max_conns = termutils.get_max_descriptors()
+        elif max_conns > termutils.get_max_descriptors():
             logger.info('max_conns is less than descriptors available,')
             logger.info('setting max descriptors count to new value')
-            max_conns = core.utils.termutils.set_max_descriptors(max_conns)
+            max_conns = termutils.set_max_descriptors(max_conns)
 
         self.max_conns = max_conns
         self.dad = os.getpid()
@@ -73,10 +69,10 @@ class WebServer:
             path = '/' + path
 
         def decorator(func):
-            self.handlers.append(core.entities.Handler(func=func,
-                                                       filter_=filter_,
-                                                       path_route=path,
-                                                       methods=methods))
+            self.handlers.append(entities.Handler(func=func,
+                                                  filter_=filter_,
+                                                  path_route=path,
+                                                  methods=methods))
 
             return func
 
@@ -118,7 +114,7 @@ class WebServer:
 
         ip, port = self.addr
 
-        if self.processes and core.utils.termutils.is_wsl():
+        if self.processes and termutils.is_wsl():
             logger.warning('wsl does not supports SO_REUSEPORT socket flag')
             logger.warning('setting processes count to 0')
             self.processes = 0
@@ -146,8 +142,8 @@ class WebServer:
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, True)
 
         try:
-            succeeded = core.utils.sockutils.bind_sock(sock, self.addr,
-                                                       disable_logs=not self._i_am_dad_process())
+            succeeded = sockutils.bind_sock(sock, self.addr,
+                                            disable_logs=not self._i_am_dad_process())
 
             if not succeeded:
                 logger.error('failed to bind server: retries limit exceeded')
@@ -159,10 +155,10 @@ class WebServer:
         if self._i_am_dad_process():
             logger.info(f'running http server on {ip}:{port}')
 
-        http_server = core.httpserver.HttpServer(sock, self.max_conns)
-        handlers_manager = core.handlers.HandlersManager(http_server, self.loader,
-                                                         self.handlers, self.err_handlers,
-                                                         self.redirects)
+        http_server = httpserver.HttpServer(sock, self.max_conns)
+        handlers_manager = handlers.HandlersManager(http_server, self.loader,
+                                                    self.handlers, self.err_handlers,
+                                                    self.redirects)
         http_server.on_message_complete_callback = handlers_manager.call_handler
 
         try:

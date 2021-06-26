@@ -4,7 +4,6 @@ from threading import Thread
 from traceback import format_exc
 
 import inotify.adapters
-from utils.exceptions import NotFound
 from inotify.calls import InotifyError
 from inotify.constants import IN_MODIFY
 

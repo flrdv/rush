@@ -7,7 +7,7 @@ from queue import Queue
 from select import EPOLLIN, EPOLLOUT
 from http_parser.http import HttpParser
 
-from lib import epollserver
+from rush.lib import epollserver
 
 EPOLLIN_AND_EPOLLOUT = EPOLLIN | EPOLLOUT
 DEFAULT_RECV_BLOCK_SIZE = 8192  # how many bytes are receiving per 1 socket read

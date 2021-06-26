@@ -1,3 +1,2 @@
 inotify~=0.2.10
 http_parser
-Cython~=0.29.23

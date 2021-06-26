@@ -1,4 +1,4 @@
-from utils.exceptions import NotFound
+from rush.utils.exceptions import NotFound
 
 DEFAULT_404 = """\
 <html>

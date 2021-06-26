@@ -1,4 +1,4 @@
-from core.utils import httputils
+from rush.core.utils import httputils
 
 
 class Handler:

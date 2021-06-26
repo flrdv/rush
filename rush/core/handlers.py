@@ -2,8 +2,8 @@ import logging
 from typing import Iterable
 from traceback import format_exc
 
-from utils.exceptions import NotFound
-from core.entities import Handler, Request
+from rush.utils.exceptions import NotFound
+from rush.core.entities import Handler, Request
 
 logger = logging.getLogger(__name__)
 
