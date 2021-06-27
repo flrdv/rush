@@ -9,7 +9,7 @@ from multiprocessing import cpu_count
 
 from .core import entities, httpserver, handlers
 from .core.utils import (termutils, default_err_handlers, sockutils,
-                             loader as loaderlib)
+                         loader as loaderlib)
 
 if not termutils.is_linux():
     raise RuntimeError('Rush-webserver is only for linux. Ave Maria!')
@@ -26,11 +26,13 @@ _logging.basicConfig(level=_logging.DEBUG,  # noqa
                      )
 logger = _logging.getLogger(__name__)
 
+DEFAULTPAGES_DIR = os.path.join(os.path.dirname(__file__), 'defaultpages')
+
 
 class WebServer:
     def __init__(self, host='localhost', port=8000, max_conns=None,
                  loader=loaderlib.Loader, cache=loaderlib.AutoUpdatingCache,
-                 sources_root='localfiles', logging=True, processes=0):
+                 sources_root=None, logging=True, processes=0):
         logger.disabled = not logging
 
         if processes is None:
@@ -50,7 +52,7 @@ class WebServer:
         }
         self.redirects = {}
 
-        self.loader = loader(cache, root=sources_root)
+        self.loader = loader(cache, root=sources_root or DEFAULTPAGES_DIR)
 
         self.addr = (host, port)
 
