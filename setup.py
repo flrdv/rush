@@ -1,20 +1,29 @@
+from os import listdir
 from setuptools import setup, find_packages
 
-with open("README.md", "r", encoding="utf8") as fd:
-    long_description = fd.read()
+with open("README.md", "r", encoding="utf8") as long_desc_fd:
+    long_description = long_desc_fd.read()
+
+with open('version', 'r') as version_fd:
+    version = version_fd.read().strip('\n')
+
+"""
+IDK why, but this is the only way to add rush/defaultpages
+to a wheel package
+"""
+defaultpages_content = map(lambda filename: 'rush/defaultpages/' + filename,
+                           listdir('rush/defaultpages'))
 
 setup(
     name="rush",
-    version="2.0.0",
+    version=version,
     author="floordiv",
     description="Webserver that I'm trying to do as fast as fuck",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/floordiv/rush",
     packages=find_packages(),
-    package_data={'': [
-        'rush/defaultpages',
-    ]},
+    data_files=[('', defaultpages_content)],
     project_urls={
         "Bug Tracker": "https://github.com/floordiv/rush/issues",
     },
