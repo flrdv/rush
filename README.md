@@ -26,6 +26,7 @@ Current perfomance:
 
 - Testing configuration:
   - Linux Mint Cinnamon 20
+  - Python 3.8.5
   - Ryzen 5 2600x 6 cores/12 threads
   - 32gb ram 2133 mHz
   - SSD Samsung 970 evo+
