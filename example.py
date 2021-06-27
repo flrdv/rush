@@ -1,4 +1,5 @@
 import logging
+from json import dumps
 
 from rush.webserver import WebServer
 
@@ -40,7 +41,22 @@ def say_hello(request):
     request.response(200, f'hello, {name}!')
 
 
-@server.route('*')
+@server.route('/print-request')
+def print_request(request):
+    major, minor = request.protocol
+    formatted_headers = '\n'.join(f'{var}: {val}' for var, val in request.headers.items())
+    request.response(200,
+                     f"""\
+{request.method} {request.path} HTTP/{major}.{minor}
+{formatted_headers}
+
+{request.body or ''}\
+""")
+
+
+@server.route(any_path=True)    # the simplest way to route all other paths
+# also possible: @server.route(filter_=lambda request: True), but this one is better
+# because calls in python are expensive enough
 def any_other_file_handler(request):
     request.response_file(request.path)
 
