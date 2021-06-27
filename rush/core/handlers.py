@@ -35,7 +35,7 @@ class HandlersManager:
                           file=None)
 
         if request_obj.path in self.redirects:
-            return self.request_obj.response(301, headers={'Location': self.redirects[path]})
+            return request_obj.response(301, headers={'Location': self.redirects[path]})
 
         handler = _pick_handler(self.handlers, request_obj)
 
@@ -65,7 +65,7 @@ def _pick_handler(handlers: Iterable[Handler], request):
     acceptable_handler_paths = {request.path, '*'}
 
     for handler in handlers:
-        if handler.path_route not in acceptable_handler_paths:
+        if handler.path_route not in acceptable_handler_paths and not handler.any_paths:
             continue
 
         if request.method not in handler.methods:
