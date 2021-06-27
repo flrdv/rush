@@ -3,10 +3,11 @@ from rush.core.utils import httputils
 
 class Handler:
     def __init__(self, func, filter_, path_route,
-                 methods):
+                 methods, any_paths):
         self.func = func
         self.filter = filter_
-        self.path_route = path_route.rstrip('/')
+        self.any_paths = any_paths
+        self.path_route = path_route.rstrip('/') if path_route is not None else None
 
         if not self.path_route:
             # we made a mistake, we fixed a mistake
