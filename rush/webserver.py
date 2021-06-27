@@ -14,7 +14,6 @@ from .core.utils import (termutils, default_err_handlers, sockutils,
 if not termutils.is_linux():
     raise RuntimeError('Rush-webserver is only for linux. Ave Maria!')
 
-# idk why but logs/ folder is ignored by git and I cant fix that
 if not os.path.exists('logs'):
     os.mkdir('logs')
 
@@ -66,15 +65,17 @@ class WebServer:
         self.max_conns = max_conns
         self.dad = os.getpid()
 
-    def route(self, path, methods=None, filter_=None):
-        if path[0] not in '/*':
+    def route(self, path=None, methods=None, filter_=None,
+              any_path=False):
+        if path and path[0] not in '/*':
             path = '/' + path
 
         def decorator(func):
             self.handlers.append(entities.Handler(func=func,
                                                   filter_=filter_,
                                                   path_route=path,
-                                                  methods=methods))
+                                                  methods=methods,
+                                                  any_paths=any_path))
 
             return func
 
@@ -137,7 +138,7 @@ class WebServer:
                     self.forks.append(child_fork)
                     logger.debug(f'fork #{fork_index} with pid {child_fork}')
             else:
-                # every fork will continue iterating, but this will stop it
+                # every fork will continue iterating, but this will stop them
                 break
 
         sock = socket.socket()
@@ -177,7 +178,7 @@ class WebServer:
         self.stop()
 
     def stop(self):
-        if os.getpid() == self.dad:
+        if self._i_am_dad_process():
             on_shutdown_event_callback = self.server_events_callbacks['on-shutdown']
 
             if on_shutdown_event_callback is not None:
