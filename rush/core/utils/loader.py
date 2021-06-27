@@ -81,16 +81,13 @@ class AutoUpdatingCache:
         if path_to_file[0] != '/':
             path_to_file = '/' + path_to_file
 
-        if path_to_file in self.cached_files:
-            return
-
         self.cached_files[path_to_file] = actual_content
 
         try:
             self.inotify.add_watch(self.root + path_to_file)
         except InotifyError as exc:
             logger.error(f'failed to start watching file {self.root + path_to_file}: {exc}'
-                         f'\nFull traceback: {format_exc()}')
+                         f'\nFull traceback:\n{format_exc()}')
 
     def get(self, path_to_file):
         return self.cached_files[path_to_file]
