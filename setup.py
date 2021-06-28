@@ -23,6 +23,7 @@ setup(
     long_description_content_type="text/markdown",
     url="https://github.com/floordiv/rush",
     packages=find_packages(),
+    include_package_data=True,
     data_files=[('', defaultpages_content)],
     project_urls={
         "Bug Tracker": "https://github.com/floordiv/rush/issues",
