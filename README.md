@@ -32,6 +32,7 @@ Rush v2.3.0 benchmarks:
   - Testing with wrk
 - Results:
   - Static redirect:
+      ```
       Running 1m test @ http://localhost:9090/easter
         12 threads and 1000 connections
         Thread Stats   Avg      Stdev     Max   +/- Stdev
@@ -40,8 +41,10 @@ Rush v2.3.0 benchmarks:
         13112754 requests in 1.00m, 1.39GB read
       Requests/sec: 218206.37
       Transfer/sec:     23.72MB
+      ```
 
   - Static cached file:
+      ```
       Running 1m test @ http://localhost:9090/
         12 threads and 1000 connections
         Thread Stats   Avg      Stdev     Max   +/- Stdev
@@ -50,8 +53,10 @@ Rush v2.3.0 benchmarks:
         12268091 requests in 1.00m, 3.61GB read
       Requests/sec: 204221.07
       Transfer/sec:     61.54MB
+      ```
 
   - Simple response with parsing url parameters:
+      ```
       Running 1m test @ http://localhost:9090/hello?name=bill
         12 threads and 1000 connections
         Thread Stats   Avg      Stdev     Max   +/- Stdev
@@ -60,7 +65,7 @@ Rush v2.3.0 benchmarks:
         9920047 requests in 1.00m, 0.90GB read
       Requests/sec: 165167.13
       Transfer/sec:     15.28MB
-
+      ```
  
  During all the tests, processor was loaded on 99.7-100%
  
