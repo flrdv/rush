@@ -7,6 +7,8 @@ import inotify.adapters
 from inotify.calls import InotifyError
 from inotify.constants import IN_MODIFY
 
+from rush.core.utils import httputils
+
 logger = logging.getLogger(__name__)
 
 content_types = {
@@ -26,6 +28,7 @@ class Loader:
         self._cache.start()
 
         self.cached_files = []
+        self.cached_responses = {}
 
     def load(self, filename, cache=True):
         if filename == '/':
@@ -55,6 +58,12 @@ class Loader:
             except FileNotFoundError:
                 logger.error(f'trying to cache non-existing file: {self.root + file}')
 
+    def cache_response(self, filename):
+        return self._cache.add_response(filename, self.load(filename))
+
+    def get_cached_response(self, filename, otherwise=None):
+        return self._cache.get_response(filename, otherwise)
+
 
 class AutoUpdatingCache:
     """
@@ -66,14 +75,20 @@ class AutoUpdatingCache:
         self.inotify = inotify.adapters.Inotify()
 
         self.cached_files = {}
+        self.cached_responses = {}
 
     def _events_listener(self):
         for event in self.inotify.event_gen(yield_nones=False):
             _, event_types, path, filename = event
 
             if IN_MODIFY in event_types:
-                with open(path + '/' + filename, 'rb') as fd:
-                    self.cached_files[os.path.join(path, filename)] = fd.read()
+                file_path = os.path.join(path, filename)
+
+                with open(file_path, 'rb') as fd:
+                    new_content = fd.read()
+
+                    self.cached_files[file_path] = new_content
+                    self.add_response(file_path, new_content)
 
                 logger.info(f'cache: updated file PATH={path} FILENAME={filename}')
 
@@ -91,6 +106,19 @@ class AutoUpdatingCache:
 
     def get(self, path_to_file):
         return self.cached_files[path_to_file]
+
+    def add_response(self, filename, new_content):
+        if new_content is None:
+            new_content = self.get(filename)
+
+        response = httputils.render_http_response((1, 1), 200, 'OK',
+                                                  None, new_content)
+        self.cached_responses[filename] = response
+
+        return response
+
+    def get_response(self, filename, otherwise):
+        return self.cached_responses.get(filename, otherwise)
 
     def start(self):
         Thread(target=self._events_listener).start()
