@@ -15,7 +15,7 @@ class HandlersManager:
         self.loader = loader
         self.handlers = handlers
         self.err_handlers = err_handlers
-        self.redirects = redirects
+        self.redirects = redirects  # from_path: response_with_new_path
 
         self.request_obj = Request(http_server, loader)
         # some hardcoded binds for err handlers
@@ -35,7 +35,7 @@ class HandlersManager:
                           file=None)
 
         if request_obj.path in self.redirects:
-            return request_obj.response(301, headers={'Location': self.redirects[path]})
+            return request_obj.raw_response(self.redirects[request_obj.path])
 
         handler = _pick_handler(self.handlers, request_obj)
 
