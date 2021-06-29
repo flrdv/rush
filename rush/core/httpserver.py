@@ -1,13 +1,11 @@
 """
-Internal module for http interacting. All the functions, methods, etc. should be
-proxied
+THIS IS AN EXPERIMENTAL IMPLEMENTATION OF HTTP SERVER, BUT MERGED WITH EPOLLSERVER
 """
 
 from queue import Queue
-from select import EPOLLIN, EPOLLOUT
+from socket import MSG_PEEK
 from http_parser.http import HttpParser
-
-from rush.lib import epollserver
+from select import epoll, EPOLLIN, EPOLLOUT, EPOLLHUP
 
 EPOLLIN_AND_EPOLLOUT = EPOLLIN | EPOLLOUT
 DEFAULT_RECV_BLOCK_SIZE = 8192  # how many bytes are receiving per 1 socket read
@@ -16,21 +14,12 @@ QUEUE_SIZE = 10000
 
 class HttpServer:
     def __init__(self, sock, max_conns):
-        """
-        Basic http server built on lib.epollserver
-
-        Just receives raw bytes and puts them into the HttpServer.requests Queue object
-        Puts into the Queue object such an objects: (data: bytes, conn: socket.socket,
-                                                     parser: http_parser.http.HttpParser)
-        """
-
         self.on_message_complete_callback = None
 
-        self.epollserver = epollserver.EpollServer(sock, maxconns=max_conns)
-        self.epollserver.add_handler(self._connect_handler, epollserver.CONNECT)
-        self.epollserver.add_handler(self._disconnect_handler, epollserver.DISCONNECT)
-        self.epollserver.add_handler(self._receive_handler, epollserver.RECEIVE)
-        self.epollserver.add_handler(self._response_handler, epollserver.RESPONSE)
+        self.sock = sock
+        self.max_conns = max_conns
+        self.epoll = None
+        self._conns = {}    # fileno: conn
 
         # I'm using http-parser but not parsing just to know when request has been ended
         # anyway I'm putting parser-object to the queue, so no new parsers entities
@@ -44,11 +33,6 @@ class HttpServer:
         parser, previously_received_body = self._requests_buff[conn]
         received_body_part = conn.recv(DEFAULT_RECV_BLOCK_SIZE)
         parser.execute(received_body_part, len(received_body_part))
-
-        """
-        if message has been completely received, clear the buffer and send result to the queue
-        elif we received part of the body
-        """
 
         if parser.is_partial_body():
             self._requests_buff[conn][1] += parser.recv_body()
@@ -67,7 +51,7 @@ class HttpServer:
         self._responses_buff[conn] = new_bytes_string
 
         if not new_bytes_string:
-            self.epollserver.direct_modify(conn, EPOLLIN)
+            self.epoll.modify(conn, EPOLLIN)
 
     def _connect_handler(self, conn):
         # creating cell for conn once to avoid if-conditions in _receive_handler and
@@ -78,10 +62,11 @@ class HttpServer:
     def _disconnect_handler(self, conn):
         self._requests_buff.pop(conn)
         self._responses_buff.pop(conn)
+        conn.close()
 
     def send(self, conn, data: bytes):
         if not self._responses_buff[conn]:
-            self.epollserver.direct_modify(conn, EPOLLIN_AND_EPOLLOUT)
+            self.epoll.modify(conn, EPOLLIN_AND_EPOLLOUT)
 
         self._responses_buff[conn] += data
 
@@ -89,4 +74,36 @@ class HttpServer:
         if self.on_message_complete_callback is None:
             raise RuntimeError('no callback on message complete provided')
 
-        self.epollserver.start(threaded=False)
+        self.sock.listen(self.max_conns)
+        polling = epoll()
+        self.epoll = polling
+        polling.register(self.sock, EPOLLIN)
+
+        while True:
+            events = polling.poll(1)
+
+            for fileno, event in events:
+                if fileno == self.sock.fileno():
+                    conn, addr = self.sock.accept()
+                    self._connect_handler(conn)
+                    conn.setblocking(False)
+                    polling.register(conn, EPOLLIN)
+                    self._conns[conn.fileno()] = conn
+                elif event & EPOLLIN:
+                    conn = self._conns[fileno]
+
+                    try:
+                        peek_byte = conn.recv(1, MSG_PEEK)
+                    except ConnectionResetError:
+                        self._disconnect_handler(self._conns.pop(fileno))
+                        continue
+
+                    if not peek_byte:
+                        self._disconnect_handler(self._conns.pop(fileno))
+                        continue
+
+                    self._receive_handler(conn)
+                elif event & EPOLLOUT:
+                    self._response_handler(self._conns[fileno])
+                elif event & EPOLLHUP:
+                    self._disconnect_handler(self._conns.pop(fileno))
