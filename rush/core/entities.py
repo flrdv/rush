@@ -38,6 +38,8 @@ class Request:
         self._http_server = http_server
         self.loader = loader
 
+        self._files_responses_cache = {}
+
     def build(self, protocol, method, path, parameters,
               headers, body, conn, file):
         self.protocol = protocol
@@ -61,9 +63,14 @@ class Request:
         will be raised and processed by handlers manager
         """
 
-        body = self.loader.load(filename)
+        if filename not in self._files_responses_cache:
+            request = httputils.render_http_response(self.protocol, 200, 'OK',
+                                                     None, self.loader.load(filename))
+            self._files_responses_cache[filename] = request
+        else:
+            request = self._files_responses_cache[filename]
 
-        self.response(200, body=body, **kwargs)
+        return self.raw_response(request)
 
     def raw_response(self, data: bytes):
         """
