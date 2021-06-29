@@ -9,7 +9,7 @@ from multiprocessing import cpu_count
 
 from .core import entities, httpserver, handlers
 from .core.utils import (termutils, default_err_handlers, sockutils,
-                         loader as loaderlib)
+                         loader as loaderlib, httputils)
 
 if not termutils.is_linux():
     raise RuntimeError('Rush-webserver is only for linux. Ave Maria!')
@@ -100,7 +100,11 @@ class WebServer:
         return func
 
     def add_redirect(self, from_path, to):
-        self.redirects[from_path] = to
+        self.redirects[from_path] = httputils.render_http_response(protocol=(1, 1),
+                                                                   status_code=301,
+                                                                   status_code_desc=None,  # choose it by itself
+                                                                   headers={'Location': to},
+                                                                   body=b'')
 
     def add_redirects(self, redirects: dict):
         self.redirects.update(redirects)
