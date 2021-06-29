@@ -2,14 +2,16 @@
 THIS IS AN EXPERIMENTAL IMPLEMENTATION OF HTTP SERVER, BUT MERGED WITH EPOLLSERVER
 """
 
-from queue import Queue
+import logging
 from socket import MSG_PEEK
+from traceback import format_exc
 from http_parser.http import HttpParser
 from select import epoll, EPOLLIN, EPOLLOUT, EPOLLHUP
 
+logger = logging.getLogger(__name__)
+
 EPOLLIN_AND_EPOLLOUT = EPOLLIN | EPOLLOUT
 DEFAULT_RECV_BLOCK_SIZE = 8192  # how many bytes are receiving per 1 socket read
-QUEUE_SIZE = 10000
 
 
 class HttpServer:
@@ -26,8 +28,6 @@ class HttpServer:
         # will be created
         self._requests_buff = {}  # conn: [parser, raw]
         self._responses_buff = {}  # conn: b'...'
-
-        self.requests = Queue(maxsize=QUEUE_SIZE)
 
     def _receive_handler(self, conn):
         parser, previously_received_body = self._requests_buff[conn]
@@ -64,6 +64,13 @@ class HttpServer:
         self._responses_buff.pop(conn)
         conn.close()
 
+    def _call_handler(self, handler, conn):
+        try:
+            handler(conn)
+        except Exception as exc:
+            logger.exception('Caught an unhandled exception in handler '
+                             f'"{handler.__name__}":\n{format_exc()}')
+
     def send(self, conn, data: bytes):
         if not self._responses_buff[conn]:
             self.epoll.modify(conn, EPOLLIN_AND_EPOLLOUT)
@@ -79,31 +86,40 @@ class HttpServer:
         self.epoll = polling
         polling.register(self.sock, EPOLLIN)
 
+        # binds
+        sock = self.sock
+        conns = self._conns
+        call_handler = self._call_handler
+        disconnect = self._disconnect_handler
+        connect = self._connect_handler
+        receive = self._receive_handler
+        response = self._response_handler
+
         while True:
             events = polling.poll(1)
 
             for fileno, event in events:
-                if fileno == self.sock.fileno():
-                    conn, addr = self.sock.accept()
-                    self._connect_handler(conn)
+                if fileno == sock.fileno():
+                    conn, addr = sock.accept()
+                    call_handler(connect, conn)
                     conn.setblocking(False)
                     polling.register(conn, EPOLLIN)
-                    self._conns[conn.fileno()] = conn
+                    conns[conn.fileno()] = conn
                 elif event & EPOLLIN:
-                    conn = self._conns[fileno]
+                    conn = conns[fileno]
 
                     try:
                         peek_byte = conn.recv(1, MSG_PEEK)
                     except ConnectionResetError:
-                        self._disconnect_handler(self._conns.pop(fileno))
+                        call_handler(disconnect, conns.pop(fileno))
                         continue
 
                     if not peek_byte:
-                        self._disconnect_handler(self._conns.pop(fileno))
+                        call_handler(disconnect, conns.pop(fileno))
                         continue
 
-                    self._receive_handler(conn)
+                    call_handler(receive, conn)
                 elif event & EPOLLOUT:
-                    self._response_handler(self._conns[fileno])
+                    call_handler(response, conns[fileno])
                 elif event & EPOLLHUP:
-                    self._disconnect_handler(self._conns.pop(fileno))
+                    call_handler(disconnect, conns.pop(fileno))
