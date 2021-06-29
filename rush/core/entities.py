@@ -57,18 +57,16 @@ class Request:
                                                                          code_desc, headers,
                                                                          body))
 
-    def response_file(self, filename, **kwargs):
+    def response_file(self, filename):
         """
         Loads file from loader. If file not found, FileNotFoundError exception
         will be raised and processed by handlers manager
         """
 
-        if filename not in self._files_responses_cache:
-            request = httputils.render_http_response(self.protocol, 200, 'OK',
-                                                     None, self.loader.load(filename))
-            self._files_responses_cache[filename] = request
-        else:
-            request = self._files_responses_cache[filename]
+        request = self.loader.get_cached_response(filename)
+
+        if request is None:
+            request = self.loader.cache_response(filename)
 
         return self.raw_response(request)
 
