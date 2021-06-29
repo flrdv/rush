@@ -86,8 +86,9 @@ class HttpServer:
         self.epoll = polling
         polling.register(self.sock, EPOLLIN)
 
-        # binds
+        # look-ups
         sock = self.sock
+        serversock_fileno = sock.fileno()
         conns = self._conns
         call_handler = self._call_handler
         disconnect = self._disconnect_handler
@@ -99,7 +100,7 @@ class HttpServer:
             events = polling.poll(1)
 
             for fileno, event in events:
-                if fileno == sock.fileno():
+                if fileno == serversock_fileno:
                     conn, addr = sock.accept()
                     call_handler(connect, conn)
                     conn.setblocking(False)
