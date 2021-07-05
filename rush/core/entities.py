@@ -7,15 +7,15 @@ class Handler:
         self.func = func
         self.filter = filter_
         self.any_paths = any_paths
-        self.path_route = path_route.rstrip('/') if path_route is not None else None
+        self.path_route = path_route.rstrip('/').encode() if path_route is not None else None
 
         if not self.path_route:
             # we made a mistake, we fixed a mistake
-            self.path_route = '/'
+            self.path_route = b'/'
 
-        self.methods = methods or {'GET', 'HEAD', 'POST', 'PUT',
-                                   'DELETE', 'CONNECT', 'OPTIONS',
-                                   'TRACE', 'PATCH'}
+        self.methods = methods or {b'GET', b'HEAD', b'POST', b'PUT',
+                                   b'DELETE', b'CONNECT', b'OPTIONS',
+                                   b'TRACE', b'PATCH'}
 
 
 class Request:
