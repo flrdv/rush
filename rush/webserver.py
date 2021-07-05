@@ -100,13 +100,12 @@ class WebServer:
         return func
 
     def add_redirect(self, from_path, to):
-        from_path = from_path.encode()
-        to = to.encode()
-        self.redirects[from_path] = httputils.render_http_response(protocol=('1', '1'),
-                                                                   status_code=301,
-                                                                   status_code_desc=None,  # choose it by itself
-                                                                   user_headers={'Location': to},
-                                                                   body=b'')
+        print(to)
+        self.redirects[from_path.encode()] = httputils.render_http_response(protocol=('1', '1'),
+                                                                            status_code=301,
+                                                                            status_code_desc=None,
+                                                                            user_headers={'Location': to},
+                                                                            body=b'')
 
     def add_redirects(self, redirects: dict):
         for key, value in redirects.items():
