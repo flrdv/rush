@@ -32,7 +32,7 @@ class HandlersManager:
                           headers=headers,
                           body=body,
                           conn=conn,
-                          file=None)
+                          file=None)    # not implemented
 
         if request_obj.path in self.redirects:
             return request_obj.raw_response(self.redirects[request_obj.path])
@@ -47,8 +47,9 @@ class HandlersManager:
         except (FileNotFoundError, NotFound):
             self.not_found_handler(request_obj)
         except Exception as exc:
-            logger.error('[ERROR-HANDLER] Caught an unhandled exception in handler (function name: '
-                         f'{handler.func.__name__}): {exc}\nFull traceback:\n{format_exc()}')
+            logger.error('caught an unhandled exception in handler '
+                         f'"{handler.func.__name__}": {exc}')
+            logger.exception(f'detailed error trace:\n{format_exc()}')
 
             self.internal_error_handler(request_obj)
 
