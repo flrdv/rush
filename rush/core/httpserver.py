@@ -1,11 +1,13 @@
-"""
-THIS IS AN EXPERIMENTAL IMPLEMENTATION OF HTTP SERVER, BUT MERGED WITH EPOLLSERVER
+""""
+This is a http server on epoll, that is using httptools lib for parsing
+http requests. This lib is a wrapper on Cython for originally written on
+C http parser "llhttp"
 """
 
 import logging
 from socket import MSG_PEEK
 from traceback import format_exc
-from http_parser.http import HttpParser
+from httptools import HttpRequestParser
 from select import epoll, EPOLLIN, EPOLLOUT, EPOLLHUP
 
 logger = logging.getLogger(__name__)
@@ -14,10 +16,36 @@ EPOLLIN_AND_EPOLLOUT = EPOLLIN | EPOLLOUT
 DEFAULT_RECV_BLOCK_SIZE = 8192  # how many bytes are receiving per 1 socket read
 
 
+class Protocol:
+    def __init__(self, call_handler, conn):
+        self.call_handler = call_handler
+        self.parser = None  # will be set later
+        self.conn = conn
+        self.url = None
+        self.headers = {}
+        self.body = b''
+
+        self.received = False
+
+    def on_url(self, url):
+        self.url = url
+
+    def on_header(self, name, value):
+        self.headers[name] = value
+
+    def on_body(self, body):
+        self.body += body
+
+    def on_message_complete(self):
+        http_version = self.parser.get_http_version()
+        self.call_handler(self.body, self.conn, (http_version[0], http_version[2]),
+                          self.parser.get_method(), self.url, '', self.headers)
+        self.received = True
+
+
 class HttpServer:
     def __init__(self, sock, max_conns):
-        self.on_message_complete_callback = None
-
+        self.on_message_complete = None
         self.sock = sock
         self.max_conns = max_conns
         self.epoll = None
@@ -26,23 +54,18 @@ class HttpServer:
         # I'm using http-parser but not parsing just to know when request has been ended
         # anyway I'm putting parser-object to the queue, so no new parsers entities
         # will be created
-        self._requests_buff = {}  # conn: [parser, raw]
+        self._requests_buff = {}  # conn: (parser, protocol_instance)
         self._responses_buff = {}  # conn: b'...'
 
     def _receive_handler(self, conn):
-        parser, previously_received_body = self._requests_buff[conn]
-        received_body_part = conn.recv(DEFAULT_RECV_BLOCK_SIZE)
-        parser.execute(received_body_part, len(received_body_part))
+        parser, protocol = self._requests_buff[conn]
+        parser.feed_data(conn.recv(DEFAULT_RECV_BLOCK_SIZE))
 
-        if parser.is_partial_body():
-            self._requests_buff[conn][1] += parser.recv_body()
-
-        if parser.is_message_complete():
-            body = self._requests_buff[conn][1]
-            self.on_message_complete_callback(body, conn, parser.get_version(),
-                                              parser.get_method(), parser.get_path(),
-                                              parser.get_query_string(), parser.get_headers())
-            self._requests_buff[conn] = [HttpParser(decompress=True), b'']
+        if protocol.received:
+            protocol.__init__(self.on_message_complete, conn)
+            new_parser = HttpRequestParser(protocol)
+            protocol.parser = new_parser
+            self._requests_buff[conn] = (new_parser, protocol)
 
     def _response_handler(self, conn):
         bytes_string = self._responses_buff[conn]
@@ -56,7 +79,10 @@ class HttpServer:
     def _connect_handler(self, conn):
         # creating cell for conn once to avoid if-conditions in _receive_handler and
         # _response_handler every time receiving new event on socket read/write
-        self._requests_buff[conn] = [HttpParser(decompress=True), b'']
+        protocol_instance = Protocol(self.on_message_complete, conn)
+        new_parser = HttpRequestParser(protocol_instance)
+        protocol_instance.parser = new_parser
+        self._requests_buff[conn] = (new_parser, protocol_instance)
         self._responses_buff[conn] = b''
 
     def _disconnect_handler(self, conn):
@@ -78,7 +104,7 @@ class HttpServer:
         self._responses_buff[conn] += data
 
     def run(self):
-        if self.on_message_complete_callback is None:
+        if self.on_message_complete is None:
             raise RuntimeError('no callback on message complete provided')
 
         self.sock.listen(self.max_conns)
@@ -97,9 +123,7 @@ class HttpServer:
         response = self._response_handler
 
         while True:
-            events = polling.poll(1)
-
-            for fileno, event in events:
+            for fileno, event in polling.poll(1):
                 if fileno == serversock_fileno:
                     conn, addr = sock.accept()
                     call_handler(connect, conn)
@@ -124,3 +148,4 @@ class HttpServer:
                     call_handler(response, conns[fileno])
                 elif event & EPOLLHUP:
                     call_handler(disconnect, conns.pop(fileno))
+
