@@ -100,7 +100,6 @@ class WebServer:
         return func
 
     def add_redirect(self, from_path, to):
-        print(to)
         self.redirects[from_path.encode()] = httputils.render_http_response(protocol=('1', '1'),
                                                                             status_code=301,
                                                                             status_code_desc=None,
