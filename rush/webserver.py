@@ -100,14 +100,17 @@ class WebServer:
         return func
 
     def add_redirect(self, from_path, to):
-        self.redirects[from_path] = httputils.render_http_response(protocol=(1, 1),
+        from_path = from_path.encode()
+        to = to.encode()
+        self.redirects[from_path] = httputils.render_http_response(protocol=('1', '1'),
                                                                    status_code=301,
                                                                    status_code_desc=None,  # choose it by itself
                                                                    user_headers={'Location': to},
                                                                    body=b'')
 
     def add_redirects(self, redirects: dict):
-        self.redirects.update(redirects)
+        for key, value in redirects.items():
+            self.add_redirect(key, value)
 
     def _i_am_dad_process(self):
         return self.dad == os.getpid()
@@ -165,7 +168,7 @@ class WebServer:
         handlers_manager = handlers.HandlersManager(http_server, self.loader,
                                                     self.handlers, self.err_handlers,
                                                     self.redirects)
-        http_server.on_message_complete_callback = handlers_manager.call_handler
+        http_server.on_message_complete = handlers_manager.call_handler
 
         while True:
             try:
