@@ -94,7 +94,7 @@ class AutoUpdatingCache:
                 self.add(filename, fd.read())
 
         response_file = self.cached_files[filename]
-        response_headers = httputils.render_http_response((1, 1), 200, 'OK',
+        response_headers = httputils.render_http_response(('1', '1'), 200, 'OK',
                                                           {'Content-Length': len(response_file)}, b'')
         self.cached_responses_headers[filename] = response_headers
 
