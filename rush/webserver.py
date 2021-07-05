@@ -116,7 +116,6 @@ class WebServer:
         on_startup_event_callback = self.server_events_callbacks['on-startup']
 
         if on_startup_event_callback is not None:
-            logger.debug('found on-startup server event callback')
             on_startup_event_callback(self.loader)
 
         ip, port = self.addr
@@ -188,7 +187,6 @@ class WebServer:
             on_shutdown_event_callback = self.server_events_callbacks['on-shutdown']
 
             if on_shutdown_event_callback is not None:
-                logger.debug('found on-shutdown server event callback')
                 on_shutdown_event_callback()
 
             if self.forks:
