@@ -1,2 +1,3 @@
 inotify~=0.2.10
 http_parser
+setuptools~=45.2.0
