@@ -4,25 +4,24 @@ from rush.utils.status_codes import status_codes
 
 
 def render_http_response(protocol, status_code, status_code_desc,
-                         headers, body):
+                         user_headers, body):
     # default headers
     # TODO: add server-time header
-    final_headers = {
+    headers = {
         'Content-Length': len(body),
         'Server': 'rush-webserver',
-        'Connection': 'keep-alive'
+        'Connection': 'keep-alive',
+        **(user_headers or {})
     }
-    final_headers.update(headers or {})
-    body = body if isinstance(body, bytes) else body.encode()
-
-    # building time
     status_description = status_code_desc or status_codes.get(status_code, 'NO DESCRIPTION')
 
     return b'%s %d %s\r\n%s\r\n\r\n%s' % (b'HTTP/%i.%i' % protocol, status_code,
                                           status_description.encode(),
-                                          format_headers(final_headers), body)
+                                          '\n'.join(f'{key}: {value}' for key, value in headers.items()).encode(),
+                                          body if isinstance(body, bytes) else body.encode())
 
 
+# just if somebody will need this
 def format_headers(headers: dict):
     return '\n'.join(f'{key}: {value}' for key, value in headers.items()).encode()
 
