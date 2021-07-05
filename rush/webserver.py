@@ -103,7 +103,7 @@ class WebServer:
         self.redirects[from_path] = httputils.render_http_response(protocol=(1, 1),
                                                                    status_code=301,
                                                                    status_code_desc=None,  # choose it by itself
-                                                                   headers={'Location': to},
+                                                                   user_headers={'Location': to},
                                                                    body=b'')
 
     def add_redirects(self, redirects: dict):
@@ -168,14 +168,16 @@ class WebServer:
                                                     self.redirects)
         http_server.on_message_complete_callback = handlers_manager.call_handler
 
-        try:
-            http_server.run()
-        except (KeyboardInterrupt, SystemExit, EOFError):
-            logger.info('aborted by user')
-        except Exception as exc:
-            logger.critical(f'an error occurred while running http server: {exc} (see detailed '
-                            'trace below)')
-            logger.exception(format_exc())
+        while True:
+            try:
+                http_server.run()
+            except (KeyboardInterrupt, SystemExit, EOFError):
+                logger.info('aborted by user')
+                break
+            except Exception as exc:
+                logger.critical(f'an error occurred while running http server: {exc}')
+                logger.exception('detailed error trace:\n' + format_exc())
+                logger.info('continuing job')
 
         # if dad-process was killed, all the children will be also killed
         # otherwise, only current child will die
