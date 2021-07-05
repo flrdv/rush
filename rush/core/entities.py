@@ -13,9 +13,12 @@ class Handler:
             # we made a mistake, we fixed a mistake
             self.path_route = b'/'
 
-        self.methods = methods or {b'GET', b'HEAD', b'POST', b'PUT',
-                                   b'DELETE', b'CONNECT', b'OPTIONS',
-                                   b'TRACE', b'PATCH'}
+        if methods:
+            self.methods = set(map(bytes, methods))
+        else:
+            self.methods = {b'GET', b'HEAD', b'POST', b'PUT',
+                            b'DELETE', b'CONNECT', b'OPTIONS',
+                            b'TRACE', b'PATCH'}
 
 
 class Request:
@@ -80,6 +83,6 @@ class Request:
 
         self._send(self.conn, data)
 
-    def parse_args(self):
-        if not self.args and self._parameters:
-            self.args = parse_qs(self._parameters)
+    def get_args(self):
+        if self._parameters:
+            return parse_qs(self._parameters)
