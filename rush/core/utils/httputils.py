@@ -14,10 +14,11 @@ def render_http_response(protocol, status_code, status_code_desc,
         **(user_headers or {})
     }
     status_description = status_code_desc or status_codes.get(status_code, 'NO DESCRIPTION')
+    protocol = f'HTTP/{".".join(protocol)}'.encode()
 
-    return b'%s %d %s\r\n%s\r\n\r\n%s' % (b'HTTP/%i.%i' % protocol, status_code,
+    return b'%s %d %s\r\n%s\r\n\r\n%s' % (protocol, status_code,
                                           status_description.encode(),
-                                          '\n'.join(f'{key}: {value}' for key, value in headers.items()).encode(),
+                                          '\r\n'.join(f'{key}: {value}' for key, value in headers.items()).encode(),
                                           body if isinstance(body, bytes) else body.encode())
 
 
