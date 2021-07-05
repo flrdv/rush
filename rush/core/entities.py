@@ -1,4 +1,4 @@
-from rush.core.utils import httputils
+from rush.core.utils.httputils import parse_qs, render_http_response
 
 
 class Handler:
@@ -36,6 +36,7 @@ class Request:
         self.args = {}
 
         self._http_server = http_server
+        self._send = http_server.send
         self.loader = loader
 
         self._files_responses_cache = {}
@@ -53,9 +54,9 @@ class Request:
         self.args.clear()
 
     def response(self, code, body=b'', headers=None, code_desc=None):
-        self._http_server.send(self.conn, httputils.render_http_response(self.protocol, code,
-                                                                         code_desc, headers,
-                                                                         body))
+        self._send(self.conn, render_http_response(self.protocol, code,
+                                                   code_desc, headers,
+                                                   body))
 
     def response_file(self, filename):
         """
@@ -63,12 +64,10 @@ class Request:
         will be raised and processed by handlers manager
         """
 
-        request = self.loader.get_cached_response(filename)
+        return self._send(self.conn,
 
-        if request is None:
-            request = self.loader.cache_response(filename)
-
-        return self.raw_response(request)
+                          self.loader.get_cached_response(filename) or
+                          self.loader.cache_response(filename))
 
     def raw_response(self, data: bytes):
         """
@@ -79,8 +78,8 @@ class Request:
         renderer function as an argument
         """
 
-        self._http_server.send(self.conn, data)
+        self._send(self.conn, data)
 
     def parse_args(self):
         if not self.args and self._parameters:
-            self.args = httputils.parse_qs(self._parameters)
+            self.args = parse_qs(self._parameters)
