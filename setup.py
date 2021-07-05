@@ -7,6 +7,13 @@ with open("README.md", "r", encoding="utf8") as long_desc_fd:
 with open('version', 'r') as version_fd:
     version = version_fd.read().strip('\n')
 
+requirements = []
+
+with open('requirements.txt', 'r') as requirements_fd:
+    for requirement in requirements_fd:
+        if requirement:
+            requirements.append(requirement.strip())
+
 """
 IDK why, but this is the only way to add rush/defaultpages
 to a wheel package
@@ -33,4 +40,5 @@ setup(
         "Operating System :: Linux only",
     ],
     python_requires=">=3.6",
+    install_requires=requirements
 )
