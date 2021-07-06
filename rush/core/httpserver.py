@@ -51,9 +51,8 @@ class HttpServer:
         self.epoll = None
         self._conns = {}    # fileno: conn
 
-        # I'm using http-parser but not parsing just to know when request has been ended
-        # anyway I'm putting parser-object to the queue, so no new parsers entities
-        # will be created
+        # every client has only one entity of parser and protocol
+        # on each request, entities are just re-initializing
         self._requests_buff = {}  # conn: (parser, protocol_instance)
         self._responses_buff = {}  # conn: b'...'
 
@@ -63,9 +62,9 @@ class HttpServer:
 
         if protocol.received:
             protocol.__init__(self.on_message_complete, conn)
-            new_parser = HttpRequestParser(protocol)
-            protocol.parser = new_parser
-            self._requests_buff[conn] = (new_parser, protocol)
+            parser.__init__(protocol)
+            protocol.parser = parser
+            self._requests_buff[conn] = (parser, protocol)
 
     def _response_handler(self, conn):
         bytes_string = self._responses_buff[conn]
