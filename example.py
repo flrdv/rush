@@ -1,5 +1,4 @@
 import logging
-from json import dumps
 
 from rush.webserver import WebServer
 
@@ -54,11 +53,22 @@ def print_request(request):
 """)
 
 
-@server.route(any_path=True)    # the simplest way to route all other paths
+@server.route(any_path=True, methods={'GET'})    # the simplest way to route all other paths
 # also possible: @server.route(filter_=lambda request: True), but this one is better
 # because calls in python are expensive enough
 def any_other_file_handler(request):
     request.response_file(request.path)
+
+
+@server.route('/receive-form', methods={'POST'})
+def receive_form(request):
+    major, minor = request.protocol
+    formatted_headers = '\n'.join(f'{var}: {val}' for var, val in request.headers.items())
+    print(f"""\
+{request.method} {request.path} HTTP/{major}.{minor}
+{formatted_headers}
+
+{request.body}""")
 
 
 server.start()
