@@ -7,9 +7,11 @@ from typing import Dict
 from traceback import format_exc
 from multiprocessing import cpu_count
 
+from .utils import cache as caches
 from .core import entities, httpserver, handlers
 from .core.utils import (termutils, default_err_handlers, sockutils,
-                         loader as loaderlib, httputils)
+                         httputils)
+from .core import loader as loaderlib
 
 if not termutils.is_linux():
     raise RuntimeError('Rush-webserver is only for linux. Ave Maria!')
@@ -30,7 +32,7 @@ DEFAULTPAGES_DIR = os.path.join(os.path.dirname(__file__), 'defaultpages')
 
 class WebServer:
     def __init__(self, host='localhost', port=8000, max_conns=None,
-                 loader=loaderlib.Loader, cache=loaderlib.AutoUpdatingCache,
+                 loader=loaderlib.Loader, cache=caches.DynamicInMemoryCache,
                  sources_root=None, logging=True, processes=0):
         logger.disabled = not logging
 
