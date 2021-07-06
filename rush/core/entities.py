@@ -14,7 +14,7 @@ class Handler:
             self.path_route = b'/'
 
         if methods:
-            self.methods = set(map(bytes, methods))
+            self.methods = {method.upper().encode() for method in methods}
         else:
             self.methods = {b'GET', b'HEAD', b'POST', b'PUT',
                             b'DELETE', b'CONNECT', b'OPTIONS',
@@ -67,10 +67,13 @@ class Request:
         will be raised and processed by handlers manager
         """
 
+        if filename == '/':
+            filename = 'index.html'
+
         return self._send(self.conn,
 
                           self.loader.get_cached_response(filename) or
-                          self.loader.cache_response(filename))
+                          self.loader.cache_and_get_response(filename))
 
     def raw_response(self, data: bytes):
         """
