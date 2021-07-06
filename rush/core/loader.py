@@ -37,7 +37,13 @@ class Loader:
                 logger.error(f'trying to cache non-existing file: {self.root + file}')
 
     def cache_and_get_response(self, filename):
+        if filename == '/':
+            filename = 'index.html'
+
         return self._cache.add_response(self.root + filename.lstrip('/'))
 
     def get_cached_response(self, filename):
+        if filename == '/':
+            filename = 'index.html'
+
         return self._cache.get_response(self.root + filename.lstrip('/'))
