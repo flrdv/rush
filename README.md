@@ -1,6 +1,6 @@
 # Rush v2
 
-Simple Webserver on python3, like Flask, but not Flask. I wanna make it as fast as I can (without using asynchronous code). Additional description will be provided later, when I'll be able to release first beta version
+Simple Webserver on python3, priority of which one is performance. The aim of the project is to make as much fast web-server, as I can. Actually, I'm planning to write some extensions on C, so I'd like to say that the aim of the project is to make as fast web-server FOR python as I can.
 
 ---
 
