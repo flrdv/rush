@@ -24,6 +24,9 @@ class HandlersManager:
 
     def call_handler(self, body, conn, proto_version,
                      method, path, parameters, headers):
+        if isinstance(path, bytes):
+            path = path.decode()
+
         request_obj = self.request_obj
         request_obj.build(protocol=proto_version,
                           method=method,
