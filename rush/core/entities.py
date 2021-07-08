@@ -1,4 +1,4 @@
-from rush.core.utils import httputils
+from rush.core.utils.httputils import parse_qs, render_http_response
 
 
 class Handler:
@@ -7,15 +7,18 @@ class Handler:
         self.func = func
         self.filter = filter_
         self.any_paths = any_paths
-        self.path_route = path_route.rstrip('/') if path_route is not None else None
+        self.path_route = path_route.rstrip('/').encode() if path_route is not None else None
 
         if not self.path_route:
             # we made a mistake, we fixed a mistake
-            self.path_route = '/'
+            self.path_route = b'/'
 
-        self.methods = methods or {'GET', 'HEAD', 'POST', 'PUT',
-                                   'DELETE', 'CONNECT', 'OPTIONS',
-                                   'TRACE', 'PATCH'}
+        if methods:
+            self.methods = {method.upper().encode() for method in methods}
+        else:
+            self.methods = {b'GET', b'HEAD', b'POST', b'PUT',
+                            b'DELETE', b'CONNECT', b'OPTIONS',
+                            b'TRACE', b'PATCH'}
 
 
 class Request:
@@ -36,7 +39,10 @@ class Request:
         self.args = {}
 
         self._http_server = http_server
+        self._send = http_server.send
         self.loader = loader
+
+        self._files_responses_cache = {}
 
     def build(self, protocol, method, path, parameters,
               headers, body, conn, file):
@@ -51,19 +57,23 @@ class Request:
         self.args.clear()
 
     def response(self, code, body=b'', headers=None, code_desc=None):
-        self._http_server.send(self.conn, httputils.render_http_response(self.protocol, code,
-                                                                         code_desc, headers,
-                                                                         body))
+        self._send(self.conn, render_http_response(self.protocol, code,
+                                                   code_desc, headers,
+                                                   body))
 
-    def response_file(self, filename, **kwargs):
+    def response_file(self, filename):
         """
         Loads file from loader. If file not found, FileNotFoundError exception
         will be raised and processed by handlers manager
         """
 
-        body = self.loader.load(filename)
+        if filename == '/':
+            filename = 'index.html'
 
-        self.response(200, body=body, **kwargs)
+        return self._send(self.conn,
+
+                          self.loader.get_cached_response(filename) or
+                          self.loader.cache_and_get_response(filename))
 
     def raw_response(self, data: bytes):
         """
@@ -74,8 +84,8 @@ class Request:
         renderer function as an argument
         """
 
-        self._http_server.send(self.conn, data)
+        self._send(self.conn, data)
 
-    def parse_args(self):
-        if not self.args and self._parameters:
-            self.args = httputils.parse_qs(self._parameters)
+    def get_args(self):
+        if self._parameters:
+            return parse_qs(self._parameters)

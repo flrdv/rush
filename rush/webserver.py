@@ -7,9 +7,11 @@ from typing import Dict
 from traceback import format_exc
 from multiprocessing import cpu_count
 
+from .utils import cache as caches
 from .core import entities, httpserver, handlers
 from .core.utils import (termutils, default_err_handlers, sockutils,
-                         loader as loaderlib)
+                         httputils)
+from .core import loader as loaderlib
 
 if not termutils.is_linux():
     raise RuntimeError('Rush-webserver is only for linux. Ave Maria!')
@@ -30,7 +32,7 @@ DEFAULTPAGES_DIR = os.path.join(os.path.dirname(__file__), 'defaultpages')
 
 class WebServer:
     def __init__(self, host='localhost', port=8000, max_conns=None,
-                 loader=loaderlib.Loader, cache=loaderlib.AutoUpdatingCache,
+                 loader=loaderlib.Loader, cache=caches.DynamicInMemoryCache,
                  sources_root=None, logging=True, processes=0):
         logger.disabled = not logging
 
@@ -100,10 +102,15 @@ class WebServer:
         return func
 
     def add_redirect(self, from_path, to):
-        self.redirects[from_path] = to
+        self.redirects[from_path.encode()] = httputils.render_http_response(protocol=('1', '1'),
+                                                                            status_code=301,
+                                                                            status_code_desc=None,
+                                                                            user_headers={'Location': to},
+                                                                            body=b'')
 
     def add_redirects(self, redirects: dict):
-        self.redirects.update(redirects)
+        for key, value in redirects.items():
+            self.add_redirect(key, value)
 
     def _i_am_dad_process(self):
         return self.dad == os.getpid()
@@ -112,7 +119,6 @@ class WebServer:
         on_startup_event_callback = self.server_events_callbacks['on-startup']
 
         if on_startup_event_callback is not None:
-            logger.debug('found on-startup server event callback')
             on_startup_event_callback(self.loader)
 
         ip, port = self.addr
@@ -162,16 +168,18 @@ class WebServer:
         handlers_manager = handlers.HandlersManager(http_server, self.loader,
                                                     self.handlers, self.err_handlers,
                                                     self.redirects)
-        http_server.on_message_complete_callback = handlers_manager.call_handler
+        http_server.on_message_complete = handlers_manager.call_handler
 
-        try:
-            http_server.run()
-        except (KeyboardInterrupt, SystemExit, EOFError):
-            logger.info('aborted by user')
-        except Exception as exc:
-            logger.critical(f'an error occurred while running http server: {exc} (see detailed '
-                            'trace below)')
-            logger.exception(format_exc())
+        while True:
+            try:
+                http_server.run()
+            except (KeyboardInterrupt, SystemExit, EOFError):
+                logger.info('aborted by user')
+                break
+            except Exception as exc:
+                logger.critical(f'an error occurred while running http server: {exc}')
+                logger.exception('detailed error trace:\n' + format_exc())
+                logger.info('continuing job')
 
         # if dad-process was killed, all the children will be also killed
         # otherwise, only current child will die
@@ -182,7 +190,6 @@ class WebServer:
             on_shutdown_event_callback = self.server_events_callbacks['on-shutdown']
 
             if on_shutdown_event_callback is not None:
-                logger.debug('found on-shutdown server event callback')
                 on_shutdown_event_callback()
 
             if self.forks:

@@ -15,7 +15,7 @@ class HandlersManager:
         self.loader = loader
         self.handlers = handlers
         self.err_handlers = err_handlers
-        self.redirects = redirects
+        self.redirects = redirects  # from_path: response_with_new_path
 
         self.request_obj = Request(http_server, loader)
         # some hardcoded binds for err handlers
@@ -24,6 +24,9 @@ class HandlersManager:
 
     def call_handler(self, body, conn, proto_version,
                      method, path, parameters, headers):
+        if isinstance(path, bytes):
+            path = path.decode()
+
         request_obj = self.request_obj
         request_obj.build(protocol=proto_version,
                           method=method,
@@ -32,10 +35,10 @@ class HandlersManager:
                           headers=headers,
                           body=body,
                           conn=conn,
-                          file=None)
+                          file=None)    # not implemented
 
         if request_obj.path in self.redirects:
-            return request_obj.response(301, headers={'Location': self.redirects[path]})
+            return request_obj.raw_response(self.redirects[request_obj.path])
 
         handler = _pick_handler(self.handlers, request_obj)
 
@@ -47,8 +50,9 @@ class HandlersManager:
         except (FileNotFoundError, NotFound):
             self.not_found_handler(request_obj)
         except Exception as exc:
-            logger.error('[ERROR-HANDLER] Caught an unhandled exception in handler (function name: '
-                         f'{handler.func.__name__}): {exc}\nFull traceback:\n{format_exc()}')
+            logger.error('caught an unhandled exception in handler '
+                         f'"{handler.func.__name__}": {exc}')
+            logger.exception(f'detailed error trace:\n{format_exc()}')
 
             self.internal_error_handler(request_obj)
 
