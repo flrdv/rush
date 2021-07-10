@@ -22,7 +22,7 @@ if not os.path.exists('logs'):
 _logging.basicConfig(level=_logging.DEBUG,  # noqa
                      format='[%(asctime)s] [%(levelname)s] %(name)s: %(message)s',
                      handlers=[
-                         _logging.FileHandler("logs/handlers.log"),
+                         _logging.FileHandler("logs/webserver.log"),
                          _logging.StreamHandler()]
                      )
 logger = _logging.getLogger(__name__)
@@ -32,7 +32,7 @@ DEFAULTPAGES_DIR = os.path.join(os.path.dirname(__file__), 'defaultpages')
 
 class WebServer:
     def __init__(self, host='localhost', port=8000, max_conns=None,
-                 loader=loaderlib.Loader, cache=caches.DynamicInMemoryCache,
+                 loader=loaderlib.Loader, cache=caches.InMemoryCache,
                  sources_root=None, logging=True, processes=0):
         logger.disabled = not logging
 
@@ -101,21 +101,50 @@ class WebServer:
 
         return func
 
-    def add_redirect(self, from_path, to):
+    def add_redirect(self, from_path, to, permanent=False):
+        headers = {
+            'Location': to
+        }
+
+        if not permanent:
+            headers['Cache-Control'] = 'no-cache'
+
         self.redirects[from_path.encode()] = httputils.render_http_response(protocol=('1', '1'),
                                                                             status_code=301,
                                                                             status_code_desc=None,
-                                                                            user_headers={'Location': to},
+                                                                            user_headers=headers,
                                                                             body=b'')
 
-    def add_redirects(self, redirects: dict):
+    def add_redirects(self, redirects: dict, permanent=False):
         for key, value in redirects.items():
-            self.add_redirect(key, value)
+            self.add_redirect(key, value, permanent=permanent)
 
     def _i_am_dad_process(self):
         return self.dad == os.getpid()
 
+    def _unscrupulous_handlers_to_the_bottom(self):
+        """
+        To avoid handlers that accepts any requesting paths always
+        getting request instead of providing it to another handler
+        that specified filter for current request. Also filters
+        them by number of acceptable methods
+        """
+
+        any_paths_handlers = []
+
+        for handler in self.handlers:
+            if handler.any_paths:
+                self.handlers.remove(handler)
+                any_paths_handlers.append(handler)
+
+        self.handlers.extend(sorted(any_paths_handlers,
+                                    key=lambda _handler: len(_handler.methods)))
+
     def start(self):
+        # so even if such a handler in the top
+        # it won't catch all the incoming requests
+        self._unscrupulous_handlers_to_the_bottom()
+
         on_startup_event_callback = self.server_events_callbacks['on-startup']
 
         if on_startup_event_callback is not None:
@@ -169,6 +198,7 @@ class WebServer:
                                                     self.handlers, self.err_handlers,
                                                     self.redirects)
         http_server.on_message_complete = handlers_manager.call_handler
+        self.loader.http_send = http_server.send
 
         while True:
             try:
