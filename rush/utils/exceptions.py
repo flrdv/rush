@@ -13,3 +13,9 @@ class NotFound(RushException):
     """
 
     pass
+
+
+class InvalidURL(RushException):
+    """
+    Exception that is being raised if requesting url is invalid
+    """
