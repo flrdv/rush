@@ -12,38 +12,46 @@ class Loader:
 
         self.cached_files = []
 
+        self.http_send = None
+
     def load(self, filename, cache=True):
         file_path = self.root + filename.lstrip('/')
 
-        if file_path in self._cache.cached_files:
-            return self._cache.get(file_path)
-
-        with open(file_path, 'rb') as fd:
-            content = fd.read()
+        if file_path in self.cached_files:
+            return self._cache.get_file(file_path)
 
         if cache:
-            self._cache.add(file_path, content)
+            self._cache.add_file(file_path)
 
-        return content
+            return self._cache.get_file(file_path)
+        else:
+            with open(file_path, 'rb') as fd:
+                return fd.read()
 
     def cache_files(self, *files):
         for file in files:
             file = file.lstrip('/')
 
+            if not file:
+                file = 'index.html'
+
             try:
-                with open(self.root + file, 'rb') as fd:
-                    self._cache.add(self.root + file, fd.read())
+                self._cache.add_file(self.root + file)
+                self.cached_files.append(self.root + file)
             except FileNotFoundError:
                 logger.error(f'trying to cache non-existing file: {self.root + file}')
+            except FileExistsError:
+                logger.warning(f'trying to cache already cached file: {self.root + file}')
 
-    def cache_and_get_response(self, filename):
+    def cache_response(self, filename):
         if filename == '/':
             filename = 'index.html'
 
         return self._cache.add_response(self.root + filename.lstrip('/'))
 
-    def get_cached_response(self, filename):
+    def send_response(self, conn, filename):
         if filename == '/':
             filename = 'index.html'
 
-        return self._cache.get_response(self.root + filename.lstrip('/'))
+        return self._cache.send_response(self.http_send, conn,
+                                         self.root + filename.lstrip('/'))
