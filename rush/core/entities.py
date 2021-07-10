@@ -1,4 +1,4 @@
-from rush.core.utils.httputils import parse_qs, render_http_response
+from rush.core.utils.httputils import parse_params, render_http_response
 
 
 class Handler:
@@ -7,11 +7,11 @@ class Handler:
         self.func = func
         self.filter = filter_
         self.any_paths = any_paths
-        self.path_route = path_route.rstrip('/').encode() if path_route is not None else None
+        self.path_route = path_route.rstrip('/') if path_route is not None else None
 
         if not self.path_route:
             # we made a mistake, we fixed a mistake
-            self.path_route = b'/'
+            self.path_route = '/'
 
         if methods:
             self.methods = {method.upper().encode() for method in methods}
@@ -31,7 +31,8 @@ class Request:
         self.protocol = None
         self.method = None
         self.path = None
-        self._parameters = None
+        self.raw_parameters = None
+        self.fragment = None
         self.headers = None
         self.body = None
         self.conn = None
@@ -45,11 +46,12 @@ class Request:
         self._files_responses_cache = {}
 
     def build(self, protocol, method, path, parameters,
-              headers, body, conn, file):
+              fragment, headers, body, conn, file):
         self.protocol = protocol
         self.method = method
         self.path = path
-        self._parameters = parameters
+        self.raw_parameters = parameters
+        self.fragment = fragment
         self.headers = headers
         self.body = body
         self.conn = conn
@@ -70,10 +72,7 @@ class Request:
         if filename == '/':
             filename = 'index.html'
 
-        return self._send(self.conn,
-
-                          self.loader.get_cached_response(filename) or
-                          self.loader.cache_and_get_response(filename))
+        self.loader.send_response(self.conn, filename)
 
     def raw_response(self, data: bytes):
         """
@@ -87,5 +86,7 @@ class Request:
         self._send(self.conn, data)
 
     def get_args(self):
-        if self._parameters:
-            return parse_qs(self._parameters)
+        if self.raw_parameters:
+            return parse_params(self.raw_parameters)
+        
+        return {}
