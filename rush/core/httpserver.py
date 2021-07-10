@@ -8,7 +8,10 @@ import logging
 from socket import MSG_PEEK
 from traceback import format_exc
 from httptools import HttpRequestParser
+from httptools.parser.errors import HttpParserError
 from select import epoll, EPOLLIN, EPOLLOUT, EPOLLHUP
+
+from rush.core.utils.httputils import decode_url
 
 logger = logging.getLogger(__name__)
 
@@ -21,14 +24,26 @@ class Protocol:
         self.call_handler = call_handler
         self.parser = None  # will be set later
         self.conn = conn
-        self.url = None
+        self.path = None
+        self.parameters = ''
+        self.fragment = None
         self.headers = {}
         self.body = b''
 
         self.received = False
 
     def on_url(self, url):
-        self.url = url
+        url = decode_url(url)
+
+        if b'?' in url:
+            url, self.parameters = url.split(b'?', 1)
+
+            if b'#' in self.parameters:
+                self.parameters, self.fragment = self.parameters.split(b'#', 1)
+        elif b'#' in self.parameters:
+            url, self.fragment = url.split(b'#', 1)
+
+        self.path = url
 
     def on_header(self, name, value):
         self.headers[name] = value
@@ -39,7 +54,8 @@ class Protocol:
     def on_message_complete(self):
         http_version = self.parser.get_http_version()
         self.call_handler(self.body, self.conn, (http_version[0], http_version[2]),
-                          self.parser.get_method(), self.url, '', self.headers)
+                          self.parser.get_method(), self.path, self.parameters,
+                          self.fragment, self.headers)
         self.received = True
 
 
@@ -58,7 +74,14 @@ class HttpServer:
 
     def _receive_handler(self, conn):
         parser, protocol = self._requests_buff[conn]
-        parser.feed_data(conn.recv(DEFAULT_RECV_BLOCK_SIZE))
+
+        try:
+            parser.feed_data(conn.recv(DEFAULT_RECV_BLOCK_SIZE))
+        except HttpParserError as exc:
+            # if some error occurred, relationship won't be good in future
+            logger.error(f'disconnected user due to parsing request error: {exc}')
+            return self._call_handler(self._disconnect_handler,
+                                      self._conns.pop(conn.fileno()))
 
         if protocol.received:
             protocol.__init__(self.on_message_complete, conn)
@@ -147,4 +170,3 @@ class HttpServer:
                     call_handler(response, conns[fileno])
                 elif event & EPOLLHUP:
                     call_handler(disconnect, conns.pop(fileno))
-
