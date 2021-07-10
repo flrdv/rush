@@ -6,7 +6,7 @@ Simple Webserver on python3, priority of which one is performance. The aim of th
 
 In master-branch I'm currently working on Rush-v2
 
-Rush-v2 is a tiny web-server (currently about ~1000 lines of code) with processor-scalability using self forks. Also implements responsing with file, smart in-memory cache.
+Rush-v2 is a tiny web-server (currently about ~1500 lines of code) with processor-scalability using self forks. Also implements responsing with file, smart in-memory cache.
 
 Unfortunataly, web-server is build on epoll, and by this reason only Linux is supported. Also using SO_REUSEPORT socket option, so Linux 3.9 and higher is supported in case of
 web-server process forking feature usage. WSL is also not supported because currently doesn't support SO_REUSEPORT option
