@@ -23,22 +23,21 @@ class HandlersManager:
         self.internal_error_handler = err_handlers['internal-error']
 
     def call_handler(self, body, conn, proto_version,
-                     method, path, parameters, headers):
-        if isinstance(path, bytes):
-            path = path.decode()
-
+                     method, path, parameters, fragment,
+                     headers):
         request_obj = self.request_obj
         request_obj.build(protocol=proto_version,
                           method=method,
-                          path=path,
+                          path=path.decode(),
                           parameters=parameters,
+                          fragment=fragment,
                           headers=headers,
                           body=body,
                           conn=conn,
                           file=None)    # not implemented
 
-        if request_obj.path in self.redirects:
-            return request_obj.raw_response(self.redirects[request_obj.path])
+        if path in self.redirects:
+            return request_obj.raw_response(self.redirects[path])
 
         handler = _pick_handler(self.handlers, request_obj)
 
