@@ -1,9 +1,11 @@
 import logging
 
 from rush.webserver import WebServer
+from rush.utils.cache import DynamicInMemoryCache, FsCache, FdCache
 
 logger = logging.getLogger('main')
-server = WebServer(port=9090, processes=None)
+server = WebServer(port=9090, processes=None,
+                   cache=DynamicInMemoryCache)
 
 server.add_redirect('/easter', '/egg')
 
@@ -31,22 +33,19 @@ def egg_handler(request):
 
 @server.route('/hello')
 def say_hello(request):
-    # this method call is required if you wanna work with request
-    # query string. This will take a time to parse, but will not
-    # take time if you don't wanna use url parameters
-    request.parse_args()
+    args = request.get_args()
     
-    name = request.args.get('name', 'world')
+    name = ' '.join(args.get('name', ['world']))
     request.response(200, f'hello, {name}!')
 
 
 @server.route('/print-request')
 def print_request(request):
     major, minor = request.protocol
-    formatted_headers = '\n'.join(f'{var}: {val}' for var, val in request.headers.items())
+    formatted_headers = '\n'.join(f'{var.decode()}: {val.decode()}' for var, val in request.headers.items())
     request.response(200,
                      f"""\
-{request.method} {request.path} HTTP/{major}.{minor}
+{request.method.decode()} {request.path} HTTP/{major}.{minor}
 {formatted_headers}
 
 {request.body or ''}\
