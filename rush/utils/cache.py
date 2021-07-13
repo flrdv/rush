@@ -1,16 +1,54 @@
-import os
 import logging
+import mimetypes
 from os import SEEK_END
 from threading import Thread
 from traceback import format_exc
 
 import inotify.adapters
 from inotify.calls import InotifyError
-from inotify.constants import IN_MODIFY
 
-from rush.core.utils.httputils import render_http_response
+from .httputils import render_http_response
+
+# disable inotify logs cause they're useless
+logging.getLogger('inotify.adapters').disabled = True
 
 logger = logging.getLogger(__name__)
+
+
+def _file_length_from_fd(fd, seek_to_begin=False):
+    fd.seek(0, SEEK_END)
+
+    if seek_to_begin:
+        length = fd.tell()
+        fd.seek(0)
+
+        return length
+
+    return fd.tell()
+
+
+def _render_headers(filename, content_length, include_content_length_header=True):
+    mime, encoding = mimetypes.guess_type(filename)
+
+    if mime is None:
+        mime = 'application/octet-stream'
+
+    headers = {
+        'Content-Length': content_length,
+        'Content-Type': mime,
+    }
+
+    if encoding is not None:
+        headers['Content-Encoding'] = encoding
+
+    return render_http_response(protocol=('1', '1'),
+                                code=200,
+                                status_code='OK',
+                                user_headers=headers,
+                                body=b'',
+                                exclude_headers=('Content-Length',)
+                                if not include_content_length_header
+                                else ())
 
 
 class InMemoryCache:
@@ -24,22 +62,34 @@ class InMemoryCache:
     def __init__(self):
         self.inotify = inotify.adapters.Inotify()
 
-        self.cached_files = {}
+        self.cached_files = {}  # full_file_name: (headers, content)
         self.get_file = self.cached_files.get
 
         self.cached_responses_headers = {}
 
+        self._running = True
+
     def _events_listener(self):
-        for event in self.inotify.event_gen(yield_nones=False):
-            _, event_types, path, filename = event
+        print('lollll')
 
-            if IN_MODIFY in event_types:
-                file_path = os.path.join(path, filename)
+        while self._running:
+            for event in self.inotify.event_gen(yield_nones=False, timeout_s=.5):
+                # otherwise, previous line could be much more longer than it should
+                _, event_types, file, _ = event
 
-                with open(file_path, 'rb') as fd:
-                    self.cached_files[file_path] = fd.read()
+                print('received events:', event_types)
 
-                logger.info(f'cache: updated file PATH={path} FILENAME={filename}')
+                if 'IN_MODIFY' in event_types:
+                    internal_filename = '/' + file.lstrip('/')
+
+                    with open(file, 'rb') as fd:
+                        self.cached_files[internal_filename] = fd.read()
+                        self.cached_responses_headers[internal_filename] = _render_headers(internal_filename,
+                                                                                           _file_length_from_fd(fd))
+
+                    logger.info(f'InMemoryCache: updated file "{file}"')
+
+        print('wait what the fuck?')
 
     def add_file(self, path_to_file):
         with open(path_to_file, 'rb') as fd:
@@ -47,9 +97,10 @@ class InMemoryCache:
 
         try:
             self.inotify.add_watch(path_to_file)
+            logger.debug(f'InMemoryCache: watching file: {path_to_file}')
         except InotifyError as exc:
-            logger.error(f'failed to start watching file {path_to_file}: {exc}'
-                         f'\nFull traceback:\n{format_exc()}')
+            logger.error(f'InMemoryCache: failed to start watching file {path_to_file}: {exc}')
+            logger.exception(f'\nFull traceback:\n{format_exc()}')
 
     """
     Here was get() method. I replaced it with lookup in __init__ to avoid useless
@@ -57,17 +108,20 @@ class InMemoryCache:
     """
 
     def add_response(self, filename):
+        """
+        This is slow function, but works only once
+        """
+
         if filename not in self.cached_files:
             self.add_file(filename)
 
         response_file = self.cached_files[filename]
-        response_headers = render_http_response(('1', '1'), 200, 'OK',
-                                                {'Content-Length': len(response_file)}, b'')
-        self.cached_responses_headers[filename] = response_headers
+        rendered_http_headers = _render_headers(filename, len(response_file))
+        self.cached_responses_headers[filename] = rendered_http_headers
 
-        return response_headers + response_file
+        return rendered_http_headers + response_file
 
-    def send_response(self, http_send, conn, filename) -> bytes or None:
+    def send_response(self, http_send, conn, filename) -> None:
         if filename not in self.cached_files:
             self.add_file(filename)
         if filename not in self.cached_responses_headers:
@@ -79,6 +133,9 @@ class InMemoryCache:
 
     def start(self):
         Thread(target=self._events_listener).start()
+
+    def __del__(self):
+        self._running = False
 
 
 class FsCache:
@@ -114,12 +171,12 @@ class FsCache:
             self.add_file(filename)
 
         content = self.get_file(filename)
-        response_headers = render_http_response(('1', '1'), 200, 'OK',
-                                                {'Content-Length': len(content)},
-                                                b'')
-        self.responses[filename] = response_headers
+        content_length = len(content)
+        rendered_headers = _render_headers(filename, content_length,
+                                           include_content_length_header=False)
+        self.responses[filename] = rendered_headers[:-2]
 
-        return response_headers + content
+        return rendered_headers[:-2] + (b'Content-Length: %d\r\n\r\n' % content_length) + content
 
     def send_response(self, http_send, conn, filename):
         if filename not in self.files:
@@ -127,7 +184,11 @@ class FsCache:
         if filename not in self.responses:
             return http_send(conn, self.add_response(filename))
 
-        return http_send(conn, self.responses[filename] + self.get_file(filename))
+        fd = self.files[filename]
+        response_headers = self.responses[filename] + (b'Content-Length: %d\r\n\r\n' %
+                                                       _file_length_from_fd(fd, True))
+
+        return http_send(conn, response_headers + self.get_file(filename))
 
     def __del__(self):
         for fd in self.files:
@@ -147,7 +208,7 @@ class FdCache:
 
     def __init__(self):
         self.files_descriptors = {}  # filename: fd (in read-mode)
-        self.headers = {}  # filename: rendered http headers
+        self.headers = {}  # filename: rendered http headers (without content-length)
 
         self.start = lambda: 'ladno'
 
@@ -171,13 +232,15 @@ class FdCache:
 
     def send_response(self, http_send, conn, filename):
         if filename not in self.files_descriptors:
-            self.add_response(filename)
+            self.add_file(filename)
         if filename not in self.headers:
             return http_send(conn, self.add_response(filename))
 
-        conn.send(self.headers[filename])
+        fd = self.files_descriptors[filename]
+        conn.send(self.headers[filename] +
+                  b'Content-Length: %d\r\n\r\n' % _file_length_from_fd(fd))
         conn.setblocking(1)
-        conn.sendfile(self.files_descriptors[filename])
+        conn.sendfile(fd)
         conn.setblocking(0)
 
     def add_response(self, filename):
@@ -185,15 +248,16 @@ class FdCache:
             self.add_file(filename)
 
         fd = self.files_descriptors[filename]
-        fd.seek(0, SEEK_END)    # we'll need that for rendering correct response
+        content_length = _file_length_from_fd(fd, seek_to_begin=True)
+        rendered_headers = _render_headers(filename, content_length,
+                                           include_content_length_header=False)[:-2]
+        self.headers[filename] = rendered_headers
 
-        headers = render_http_response(('1', '1'), 200, 'OK',
-                                       {'Content-Length': fd.tell()},
-                                       b'')
-        self.headers[filename] = headers
-        fd.seek(0)
-
-        return headers + fd.read()
+        # what's going on here? It's a shit code. Cause of specific
+        # of current caching implementation, I cannot use static headers
+        # for all. So, I just render headers without content-length header,
+        # and just adding new value to static headers each time I response
+        return rendered_headers + (b'Content-Length: %d\r\n\r\n' % content_length) + fd.read()
 
     def __del__(self):
         for fd in self.files_descriptors:
