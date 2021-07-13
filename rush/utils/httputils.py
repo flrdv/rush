@@ -8,7 +8,8 @@ def format_headers(headers: dict):
 
 
 def render_http_response(protocol: tuple, code: int, status_code: str or None,
-                         user_headers: dict, body: str or bytes):
+                         user_headers: dict, body: str or bytes,
+                         exclude_headers=()):
     # default headers
     # TODO: add server-time header
     headers = {
@@ -17,6 +18,10 @@ def render_http_response(protocol: tuple, code: int, status_code: str or None,
         'Connection': 'keep-alive',
         **(user_headers or {})
     }
+
+    if exclude_headers:
+        map(headers.pop, exclude_headers)
+
     status_description = status_code or status_codes.get(code, 'NO STATUS CODE')
     protocol = f'HTTP/{".".join(protocol)}'.encode()
 
