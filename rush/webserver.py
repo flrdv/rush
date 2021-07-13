@@ -7,11 +7,10 @@ from typing import Dict
 from traceback import format_exc
 from multiprocessing import cpu_count
 
-from .utils import cache as caches
-from .core import entities, httpserver, handlers
-from .core.utils import (termutils, default_err_handlers, sockutils,
-                         httputils)
-from .core import loader as loaderlib
+from .utils import cache as caches, httputils
+from .core import entities, httpserver, handlers, loader as loaderlib
+from .core.utils import (termutils, default_err_handlers, sockutils)
+
 
 if not termutils.is_linux():
     raise RuntimeError('Rush-webserver is only for linux. Ave Maria!')
@@ -110,8 +109,8 @@ class WebServer:
             headers['Cache-Control'] = 'no-cache'
 
         self.redirects[from_path.encode()] = httputils.render_http_response(protocol=('1', '1'),
-                                                                            status_code=301,
-                                                                            status_code_desc=None,
+                                                                            code=301,
+                                                                            status_code=None,
                                                                             user_headers=headers,
                                                                             body=b'')
 
