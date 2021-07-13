@@ -83,9 +83,9 @@ class InMemoryCache:
                     internal_filename = '/' + file.lstrip('/')
 
                     with open(file, 'rb') as fd:
-                        self.cached_files[internal_filename] = fd.read()
-                        self.cached_responses_headers[internal_filename] = _render_headers(internal_filename,
-                                                                                           _file_length_from_fd(fd))
+                        self.cached_files[file] = fd.read()
+                        self.cached_responses_headers[file] = _render_headers(internal_filename,
+                                                                              _file_length_from_fd(fd))
 
                     logger.info(f'InMemoryCache: updated file "{file}"')
 
