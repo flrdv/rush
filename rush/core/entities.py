@@ -1,4 +1,15 @@
-from rush.core.utils.httputils import parse_params, render_http_response
+import mimetypes
+from typing import Union
+
+try:
+    import simdjson as json
+except ImportError:
+    try:
+        import ujson as json
+    except ImportError:
+        import json
+
+from rush.utils.httputils import parse_params, render_http_response
 
 
 class Handler:
@@ -58,10 +69,26 @@ class Request:
         self.file = file
         self.args.clear()
 
-    def response(self, code, body=b'', headers=None, code_desc=None):
+    def response(self, code, body=b'', headers=None, status_code=None):
         self._send(self.conn, render_http_response(self.protocol, code,
-                                                   code_desc, headers,
+                                                   status_code, headers,
                                                    body))
+
+    def response_json(self, data: Union[dict, list, bytes], code=200,
+                      status_code=None, headers=None):
+        if not isinstance(data, bytes):
+            data = json.dumps(data).encode()
+
+        final_headers = {
+            'Content-Type': 'application/json',
+            **(headers or {})
+        }
+
+        self._send(self.conn, render_http_response(protocol=self.protocol,
+                                                   code=code,
+                                                   status_code=status_code,
+                                                   user_headers=final_headers,
+                                                   body=data))
 
     def response_file(self, filename):
         """
@@ -88,5 +115,8 @@ class Request:
     def get_args(self):
         if self.raw_parameters:
             return parse_params(self.raw_parameters)
-        
+
         return {}
+
+    def get_form(self):
+        ...
