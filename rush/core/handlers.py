@@ -10,12 +10,14 @@ logger = logging.getLogger(__name__)
 
 class HandlersManager:
     def __init__(self, http_server, loader, handlers,
-                 err_handlers, redirects):
+                 err_handlers, redirects, auto_static_distribution=True):
         self.http_server = http_server
+        self._send = http_server.send
         self.loader = loader
         self.handlers = handlers
         self.err_handlers = err_handlers
         self.redirects = redirects  # from_path: response_with_new_path
+        self.auto_static_distribution = auto_static_distribution
 
         self.request_obj = Request(http_server, loader)
         # some hardcoded binds for err handlers
@@ -25,6 +27,11 @@ class HandlersManager:
     def call_handler(self, body, conn, proto_version,
                      method, path, parameters, fragment,
                      headers):
+        if path in self.redirects:
+            return self._send(conn, self.redirects[path])
+        elif path.startswith(b'/static/') and self.auto_static_distribution:
+            return self.loader.send_response(conn, path.decode())
+
         request_obj = self.request_obj
         request_obj.build(protocol=proto_version,
                           method=method,
@@ -35,9 +42,6 @@ class HandlersManager:
                           body=body,
                           conn=conn,
                           file=None)    # not implemented
-
-        if path in self.redirects:
-            return request_obj.raw_response(self.redirects[path])
 
         handler = _pick_handler(self.handlers, request_obj)
 
