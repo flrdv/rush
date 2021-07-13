@@ -1,11 +1,11 @@
 import logging
 
 from rush.webserver import WebServer
-from rush.utils.cache import DynamicInMemoryCache, FsCache, FdCache
+from rush.utils.cache import InMemoryCache, FsCache, FdCache
 
 logger = logging.getLogger('main')
 server = WebServer(port=9090, processes=None,
-                   cache=DynamicInMemoryCache)
+                   cache=InMemoryCache)
 
 server.add_redirect('/easter', '/egg')
 
@@ -52,22 +52,20 @@ def print_request(request):
 """)
 
 
-@server.route(any_path=True, methods={'GET'})    # the simplest way to route all other paths
+# the simplest way to route all other paths
 # also possible: @server.route(filter_=lambda request: True), but this one is better
 # because calls in python are expensive enough
+@server.route(any_path=True, methods={'GET'})
 def any_other_file_handler(request):
     request.response_file(request.path)
 
 
 @server.route('/receive-form', methods={'POST'})
 def receive_form(request):
-    major, minor = request.protocol
-    formatted_headers = '\n'.join(f'{var}: {val}' for var, val in request.headers.items())
-    print(f"""\
-{request.method} {request.path} HTTP/{major}.{minor}
-{formatted_headers}
-
-{request.body}""")
+    print('I received post-request!')
+    print('post-request attached file:')
+    print(request.file)
+    print(request.body)
 
 
 server.start()
