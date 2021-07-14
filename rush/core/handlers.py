@@ -1,6 +1,6 @@
 import logging
-from typing import Iterable
 from traceback import format_exc
+from typing import Iterable, Tuple
 
 from rush.utils.exceptions import NotFound
 from rush.core.entities import Handler, Request
@@ -24,9 +24,16 @@ class HandlersManager:
         self.not_found_handler = err_handlers['not-found']
         self.internal_error_handler = err_handlers['internal-error']
 
-    def call_handler(self, body, conn, proto_version,
-                     method, path, parameters, fragment,
-                     headers):
+    def call_handler(self,
+                     body: bytes,
+                     conn,
+                     proto_version: Tuple[str, str],
+                     method: bytes,
+                     path: bytes,
+                     parameters: bytes,
+                     fragment: bytes,
+                     headers: dict
+                     ):
         if path in self.redirects:
             return self._send(conn, self.redirects[path])
         elif path.startswith(b'/static/') and self.auto_static_distribution:
