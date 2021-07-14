@@ -1,5 +1,5 @@
 import mimetypes
-from typing import Union
+from typing import Union, Tuple
 
 try:
     import simdjson as json
@@ -56,8 +56,17 @@ class Request:
 
         self._files_responses_cache = {}
 
-    def build(self, protocol, method, path, parameters,
-              fragment, headers, body, conn, file):
+    def build(self,
+              protocol: Tuple[str, str],
+              method: bytes,
+              path: str,
+              parameters: bytes,
+              fragment: bytes,
+              headers: dict,
+              body: bytes,
+              conn,
+              file: Union[bytes, None]
+              ):
         self.protocol = protocol
         self.method = method
         self.path = path
@@ -69,13 +78,22 @@ class Request:
         self.file = file
         self.args.clear()
 
-    def response(self, code, body=b'', headers=None, status_code=None):
+    def response(self,
+                 body=b'',
+                 code: int = 200,
+                 headers: Union[dict, None] = None,
+                 status_code: Union[dict, None] = None
+                 ):
         self._send(self.conn, render_http_response(self.protocol, code,
                                                    status_code, headers,
                                                    body))
 
-    def response_json(self, data: Union[dict, list, bytes], code=200,
-                      status_code=None, headers=None):
+    def response_json(self,
+                      data: Union[dict, list, bytes],
+                      code: int = 200,
+                      status_code: Union[str, None] = None,
+                      headers: Union[dict, None] = None
+                      ):
         if not isinstance(data, bytes):
             data = json.dumps(data).encode()
 
@@ -90,7 +108,7 @@ class Request:
                                                    user_headers=final_headers,
                                                    body=data))
 
-    def response_file(self, filename):
+    def response_file(self, filename: str):
         """
         Loads file from loader. If file not found, FileNotFoundError exception
         will be raised and processed by handlers manager
@@ -119,4 +137,5 @@ class Request:
         return {}
 
     def get_form(self):
-        ...
+        if self.method == b'POST':
+            return parse_params(self.body)
