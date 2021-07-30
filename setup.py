@@ -18,8 +18,16 @@ with open('requirements.txt', 'r') as requirements_fd:
 IDK why, but this is the only way to add rush/defaultpages
 to a wheel package
 """
-defaultpages_content = map(lambda filename: 'rush/defaultpages/' + filename,
-                           listdir('rush/defaultpages'))
+nonpython_files_dirs = [
+    'rush/defaultpages',
+    'rush/defaultpages/static'
+]
+nonpython_files = []
+
+for nonpython_files_dir in nonpython_files_dirs:
+    nonpython_files_dir = nonpython_files_dir.rstrip('/') + '/'
+    nonpython_files.extend(map(lambda file: nonpython_files_dir + file,
+                               listdir(nonpython_files_dir)))
 
 setup(
     name="rush",
@@ -31,7 +39,7 @@ setup(
     url="https://github.com/floordiv/rush",
     packages=find_packages(),
     include_package_data=True,
-    data_files=[('', defaultpages_content)],
+    data_files=[('', nonpython_files)],
     project_urls={
         "Bug Tracker": "https://github.com/floordiv/rush/issues",
     },
