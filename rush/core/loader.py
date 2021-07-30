@@ -1,5 +1,8 @@
 import os.path
 import logging
+from traceback import format_exc
+
+from ..utils.cache import Cache
 
 logger = logging.getLogger(__name__)
 
@@ -7,6 +10,11 @@ logger = logging.getLogger(__name__)
 class Loader:
     def __init__(self, cache_impl, root):
         self.root = os.path.join(root, '')
+
+        if not issubclass(cache_impl, Cache):
+            raise TypeError(f'cache implementation {cache_impl} has to be '
+                            'inherited from rush.utils.cache.Cache class')
+
         self._cache = cache_impl()
         self._cache.start()
 
@@ -14,7 +22,7 @@ class Loader:
 
         self.http_send = None
 
-    def load(self, filename, cache=True):
+    def get_file(self, filename, cache=True):
         file_path = self.root + filename.lstrip('/')
 
         if file_path in self.cached_files:
@@ -43,15 +51,13 @@ class Loader:
             except FileExistsError:
                 logger.warning(f'trying to cache already cached file: {self.root + file}')
 
-    def cache_response(self, filename):
+    def send_response(self, conn, filename, headers):
         if filename == '/':
             filename = 'index.html'
 
-        return self._cache.add_response(self.root + filename.lstrip('/'))
+        return self._cache.send_file(self.http_send, conn,
+                                     self.root + filename.lstrip('/'),
+                                     headers)
 
-    def send_response(self, conn, filename):
-        if filename == '/':
-            filename = 'index.html'
-
-        return self._cache.send_response(self.http_send, conn,
-                                         self.root + filename.lstrip('/'))
+    def close(self):
+        self._cache.close()
