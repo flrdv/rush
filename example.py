@@ -1,17 +1,18 @@
 import logging
 
 from rush.webserver import WebServer
-from rush.utils.cache import InMemoryCache, FsCache, FdCache
+from rush.core import loader as loaderlib, entities
+from rush.utils.cache import InMemoryCache, DescriptorsCache, FileSystemCache
 
 logger = logging.getLogger('main')
 server = WebServer(port=9090, processes=None,
-                   cache=InMemoryCache)
+                   cache=FileSystemCache)
 
 server.add_redirect('/easter', '/egg')
 
 
 @server.on_startup
-def on_startup(loader):
+def on_startup(loader: loaderlib.Loader):
     logger.info('Wow! I\'m on-startup event callback!')
     loader.cache_files('index.html')
 
@@ -22,50 +23,57 @@ def on_shutdown():
 
 
 @server.route('/')
-def main_page_handler(request):
+def main_page_handler(request: entities.Request):
     request.response_file('index.html')
 
 
 @server.route('/egg')
-def egg_handler(request):
+def egg_handler(request: entities.Request):
     request.response_file('fuckoff.html')
 
 
 @server.route('/hello')
-def say_hello(request):
+def say_hello(request: entities.Request):
     args = request.get_args()
     
     name = ' '.join(args.get('name', ['world']))
-    request.response(200, f'hello, {name}!')
+    request.response(f'hello, {name}!')
 
 
 @server.route('/print-request')
-def print_request(request):
-    major, minor = request.protocol
-    formatted_headers = '\n'.join(f'{var.decode()}: {val.decode()}' for var, val in request.headers.items())
-    request.response(200,
-                     f"""\
-{request.method.decode()} {request.path} HTTP/{major}.{minor}
-{formatted_headers}
-
-{request.body or ''}\
-""")
+def print_request(request: entities.Request):
+    request.response(str(request))
 
 
 # the simplest way to route all other paths
 # also possible: @server.route(filter_=lambda request: True), but this one is better
 # because calls in python are expensive enough
 @server.route(any_path=True, methods={'GET'})
-def any_other_file_handler(request):
+def any_other_file_handler(request: entities.Request):
     request.response_file(request.path)
 
 
-@server.route('/receive-form', methods={'POST'})
-def receive_form(request):
-    print('I received post-request!')
-    print('post-request attached file:')
-    print(request.file)
-    print(request.body)
+@server.route('/receive-file', methods={'POST'})
+def receive_form(request: entities.Request):
+    print('received request:')
+    print(request)
+
+    if not request.file:
+        form = request.get_form()
+
+        if 'filename' in form:
+            return request.response('error: already uploaded', 403)
+
+        return request.response('error: no file attached', 403)
+
+    args = request.get_args()
+
+    if 'filename' not in args:
+        return request.response('error: filename was not specified', 403)
+
+    fd = open(args['filename'], 'w')
+    request.receive_file(lambda chunk: fd.write(chunk),
+                         fd.close)
 
 
 server.start()
