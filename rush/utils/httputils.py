@@ -1,4 +1,6 @@
-from rush.utils.status_codes import status_codes
+from typing import Union, Tuple
+
+from .status_codes import status_codes
 
 
 def format_headers(headers: dict):
@@ -7,18 +9,23 @@ def format_headers(headers: dict):
                .encode()
 
 
-def render_http_response(protocol: tuple, code: int, status_code: str or None,
-                         user_headers: dict, body: str or bytes,
-                         exclude_headers=()):
+def render_http_response(protocol: tuple,
+                         code: int,
+                         status_code: Union[str, None],
+                         user_headers: dict,
+                         body: Union[str, bytes],
+                         exclude_headers: Tuple[str] = (),
+                         auto_content_length: bool = True):
     # default headers
     # TODO: add server-time header
     headers = {
-        'Content-Length': len(body),
-        'Server': 'rush-webserver',
+        'Server': 'rush',
         'Connection': 'keep-alive',
         **(user_headers or {})
     }
 
+    if auto_content_length:
+        headers['Content-Length'] = len(body)
     if exclude_headers:
         map(headers.pop, exclude_headers)
 
@@ -32,26 +39,59 @@ def render_http_response(protocol: tuple, code: int, status_code: str or None,
     # I'm not using format_headers() function here just to avoid useless calling
     # as everybody knows, functions' calls are a bit expensive in CPython
     return b'%s %d %s\r\n%s\r\n\r\n%s' % (protocol, code, status_description.encode(),
-                                          '\r\n'.join(f'{key.lower()}: {value}'
+                                          '\r\n'.join(f'{key}: {value}'
                                                       for key, value in headers.items())
                                                 .encode(),
                                           body if isinstance(body, bytes) else body.encode())
 
 
 def render_http_request(method: bytes, path: str, protocol: tuple,
-                        headers: dict, body: bytes):
-    if b'content-length' not in headers:
-        headers[b'content-length'] = len(body)
+                        headers: dict, body: bytes, chunked: bool = False):
+    if not chunked and 'content-length' not in headers:
+        headers['content-length'] = len(body)
 
     protocol = f'HTTP/{".".join(protocol)}'.encode()
 
     return b'%s %s %s\r\n%s\r\n\r\n%s' % (method, path.encode(), protocol,
-                                          '\r\n'.join(f'{key.decode().lower()}: {value.decode()}'
+                                          '\r\n'.join(f'{key}: {value}'
                                                       for key, value in headers.items()).encode(),
                                           body)
 
 
-def parse_params(params):
+def generate_chunked_data(fd, chunk_length=4096):
+    chunk = fd.read(chunk_length)
+
+    # it's a hack but anyway, we don't need 0x part
+    # there also can not be negative values, so it's ok
+    chunk_length_in_hex = hex(chunk_length)[2:].encode() + b'\r\n'
+
+    """
+    First, we are rendering current chunk
+    Then, we are reading new chunk
+    If reading new chunk returned empty string, it means, that already 
+    rendered chunk was the last one, so statically counted hex length
+    is invalid, that's why we're re-rendering chunk with it's 
+    real length
+    """
+
+    while chunk:
+        prev_chunk, chunk = chunk, fd.read(chunk_length)
+
+        if not chunk:
+            # returning last one chunk with it's real length
+            # and null chunk to say client that that's it
+            # no more beer, get the fuck out
+
+            yield (
+                b'%s\r\n%s\r\n' % (hex(len(prev_chunk))[2:].encode(), prev_chunk) +
+                b'0\r\n\r\n'
+            )
+            return
+
+        yield b'%s%s\r\n' % (chunk_length_in_hex, chunk)
+
+
+def parse_params(params: bytes):
     """
     Returns dict with params (empty if no params given)
     """
