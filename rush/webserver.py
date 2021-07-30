@@ -221,12 +221,15 @@ class WebServer:
             if on_shutdown_event_callback is not None:
                 on_shutdown_event_callback()
 
+            logger.info('clearing cache')
+            self.loader.close()
+
             if self.forks:
                 logger.info('killing server forks')
 
-            for child in self.forks:
-                os.kill(child, SIGKILL)
-                logger.debug('killed child: ' + str(child))
+                for child in self.forks:
+                    os.kill(child, SIGKILL)
+                    logger.debug('killed child: ' + str(child))
 
             logger.info('web-server has been stopped. Good bye')
             os.abort()
