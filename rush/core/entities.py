@@ -1,4 +1,3 @@
-import mimetypes
 from typing import Union, Tuple
 
 try:
@@ -9,7 +8,9 @@ except ImportError:
     except ImportError:
         import json
 
-from rush.utils.httputils import parse_params, render_http_response
+from rush.utils.httputils import (parse_params,
+                                  render_http_response,
+                                  render_http_request)
 
 
 class Handler:
@@ -47,8 +48,12 @@ class Request:
         self.headers = None
         self.body = None
         self.conn = None
+        # always means that there is chunked file
         self.file = None
         self.args = {}
+
+        self.on_chunk = lambda part: 'ok'
+        self.on_complete = lambda: 'ladno'
 
         self._http_server = http_server
         self._send = http_server.send
@@ -62,10 +67,10 @@ class Request:
               path: str,
               parameters: bytes,
               fragment: bytes,
-              headers: dict,
+              headers: 'CaseInsensitiveDict',
               body: bytes,
               conn,
-              file: Union[bytes, None]
+              file: bool
               ):
         self.protocol = protocol
         self.method = method
@@ -108,7 +113,10 @@ class Request:
                                                    user_headers=final_headers,
                                                    body=data))
 
-    def response_file(self, filename: str):
+    def response_file(self,
+                      filename: str,
+                      headers: Union[dict, None] = None
+                      ):
         """
         Loads file from loader. If file not found, FileNotFoundError exception
         will be raised and processed by handlers manager
@@ -117,7 +125,7 @@ class Request:
         if filename == '/':
             filename = 'index.html'
 
-        self.loader.send_response(self.conn, filename)
+        self.loader.send_response(self.conn, filename, headers=headers)
 
     def raw_response(self, data: bytes):
         """
@@ -139,3 +147,41 @@ class Request:
     def get_form(self):
         if self.method == b'POST':
             return parse_params(self.body)
+
+        return {}
+
+    def receive_file(self, on_chunk, on_complete=None):
+        if self.file:
+            self.on_chunk = on_chunk
+            self.on_complete = on_complete
+
+    def __str__(self):
+        return render_http_request(self.method,
+                                   self.path,
+                                   self.protocol,
+                                   self.headers,
+                                   self.body,
+                                   chunked=bool(self.on_chunk)).decode()
+
+    __repr__ = __str__
+
+
+class CaseInsensitiveDict(dict):
+    def __init__(self, *args, **kwargs):
+        self.__parent = super()
+        super().__init__(*args, **kwargs)
+
+    def __getitem__(self, item):
+        return self.__parent.__getitem__(item.lower())
+
+    def __setitem__(self, key, value):
+        self.__parent.__setitem__(key.lower(), value)
+
+    def __contains__(self, item):
+        return self.__parent.__contains__(item)
+
+    def get(self, item, instead=None):
+        return self.__parent.get(item.lower(), instead)
+
+    def pop(self, key):
+        return self.__parent.pop(key.lower())
