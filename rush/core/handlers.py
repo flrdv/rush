@@ -3,7 +3,7 @@ from traceback import format_exc
 from typing import Iterable, Tuple
 
 from rush.utils.exceptions import NotFound
-from rush.core.entities import Handler, Request
+from rush.core.entities import Handler, Request, CaseInsensitiveDict
 
 logger = logging.getLogger(__name__)
 
@@ -11,8 +11,6 @@ logger = logging.getLogger(__name__)
 class HandlersManager:
     def __init__(self, http_server, loader, handlers,
                  err_handlers, redirects, auto_static_distribution=True):
-        self.http_server = http_server
-        self._send = http_server.send
         self.loader = loader
         self.handlers = handlers
         self.err_handlers = err_handlers
@@ -25,6 +23,7 @@ class HandlersManager:
         self.internal_error_handler = err_handlers['internal-error']
 
     def call_handler(self,
+                     response_http,
                      body: bytes,
                      conn,
                      proto_version: Tuple[str, str],
@@ -32,12 +31,11 @@ class HandlersManager:
                      path: bytes,
                      parameters: bytes,
                      fragment: bytes,
-                     headers: dict
+                     headers: CaseInsensitiveDict,
+                     file: bool
                      ):
         if path in self.redirects:
-            return self._send(conn, self.redirects[path])
-        elif path.startswith(b'/static/') and self.auto_static_distribution:
-            return self.loader.send_response(conn, path.decode())
+            return response_http(conn, self.redirects[path])
 
         request_obj = self.request_obj
         request_obj.build(protocol=proto_version,
@@ -48,7 +46,15 @@ class HandlersManager:
                           headers=headers,
                           body=body,
                           conn=conn,
-                          file=None)    # not implemented
+                          file=file)
+
+        if path.startswith(b'/static/') and self.auto_static_distribution:
+            try:
+                self.loader.send_response(conn, request_obj.path)
+            except (NotFound, FileNotFoundError):
+                self.not_found_handler(request_obj)
+            finally:
+                return request_obj
 
         handler = _pick_handler(self.handlers, request_obj)
 
@@ -65,6 +71,8 @@ class HandlersManager:
             logger.exception(f'detailed error trace:\n{format_exc()}')
 
             self.internal_error_handler(request_obj)
+        finally:
+            return request_obj
 
 
 def err_handler_wrapper(err_handler_type, func, request):
