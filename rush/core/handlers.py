@@ -50,7 +50,7 @@ class HandlersManager:
 
         if path.startswith(b'/static/') and self.auto_static_distribution:
             try:
-                self.loader.send_response(conn, request_obj.path)
+                self.loader.send_response(conn, request_obj.path, None)
             except (NotFound, FileNotFoundError):
                 self.not_found_handler(request_obj)
             finally:
