@@ -55,9 +55,12 @@ class Loader:
         if filename == '/':
             filename = 'index.html'
 
-        return self._cache.send_file(self.http_send, conn,
-                                     self.root + filename.lstrip('/'),
-                                     headers)
+        try:
+            return self._cache.send_file(self.http_send, conn,
+                                         self.root + filename.lstrip('/'),
+                                         headers)
+        except IsADirectoryError:
+            raise FileNotFoundError from None
 
     def close(self):
         self._cache.close()
