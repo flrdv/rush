@@ -143,12 +143,11 @@ class HttpServer:
             self._requests_buff[conn] = (parser, protocol)
 
     def _response_handler(self, conn):
-        bytes_string = self._responses_buff[conn]
-        bytes_sent = conn.send(bytes_string)
-        new_bytes_string = bytes_string[bytes_sent:]
-        self._responses_buff[conn] = new_bytes_string
+        current_bytestring = self._responses_buff[conn]
+        bytestring_left = current_bytestring[conn.send(current_bytestring):]
+        self._responses_buff[conn] = bytestring_left
 
-        if not new_bytes_string:
+        if not bytestring_left:
             self.epoll.modify(conn, EPOLLIN)
 
     def _connect_handler(self, conn):
