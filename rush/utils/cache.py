@@ -73,7 +73,6 @@ def _sendfile(out_fd, in_fd, offset, length):
 
     while sent != 0:
         sent = sendfile(out_fd, in_fd, offset, length)
-        print(sent, length)
 
 
 class Cache:
