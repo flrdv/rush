@@ -72,9 +72,9 @@ def receive_form(request: entities.Request):
     if 'filename' not in args:
         return request.response('error: filename was not specified', 403)
 
-    fd = open(args['filename'], 'w')
-    request.receive_file(lambda chunk: fd.write(chunk),
-                         fd.close)
+    fd = open(args['filename'], 'wb')
+    request.receive_file(lambda chunk: fd.write(chunk),                         # on_chunk callback
+                         lambda: (fd.close(), request.response(b'written')))    # on_complete callback
 
 
 server.start()
