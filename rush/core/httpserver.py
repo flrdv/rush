@@ -176,10 +176,15 @@ class HttpServer:
             logger.exception(f'detailed error trace:\n{format_exc()}')
 
     def send(self, conn, data: bytes):
+        sent = conn.send(data)
+
+        if sent == len(data):
+            return
+
         if not self._responses_buff[conn]:
             self.epoll.modify(conn, EPOLLIN_AND_EPOLLOUT)
 
-        self._responses_buff[conn] += data
+        self._responses_buff[conn] += data[sent:]
 
     def run(self):
         if self.on_message_complete is None:
