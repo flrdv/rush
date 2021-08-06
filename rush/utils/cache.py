@@ -366,18 +366,19 @@ class FileSystemCache(Cache):
         origin_fd = open(filename, 'rb')
         origin_fd_len = _file_length_from_fd(origin_fd)
         self.original_descriptors[filename] = (origin_fd, origin_fd_len)
-        new_filename = f'.cache/{time.time()}-{basename(filename)}'
+        new_filename = '.cache/' + basename(filename)
 
-        with open(new_filename, 'wb') as new_file:
-            new_file.write(
-                _render_static_file_headers(
-                    filename, origin_fd_len
+        if not os.path.exists(new_filename):
+            with open(new_filename, 'wb') as new_file:
+                new_file.write(
+                    _render_static_file_headers(
+                        filename, origin_fd_len
+                    )
                 )
-            )
-            new_file.flush()
-            _sendfile(
-                new_file.fileno(), origin_fd.fileno(), 0, origin_fd_len
-            )
+                new_file.flush()
+                _sendfile(
+                    new_file.fileno(), origin_fd.fileno(), 0, origin_fd_len
+                )
 
         new_fd = open(new_filename, 'rb')
         new_fd_len = _file_length_from_fd(new_fd)
