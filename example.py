@@ -47,7 +47,8 @@ def print_request(request: entities.Request):
 
 # the simplest way to route all other paths
 # also possible: @server.route(filter_=lambda request: True), but this one is better
-# because calls in python are expensive enough
+# because calls in python are expensive enough, but also can catch all the requests
+# that has to be processed in another handler
 @server.route(any_path=True, methods={'GET'})
 def any_other_file_handler(request: entities.Request):
     request.response_file(request.path)
