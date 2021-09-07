@@ -1,4 +1,4 @@
-from typing import Union, Tuple
+from typing import Union
 
 try:
     import simdjson as json
@@ -62,7 +62,7 @@ class Request:
         self._files_responses_cache = {}
 
     def build(self,
-              protocol: Tuple[str, str],
+              protocol: str,
               method: bytes,
               path: str,
               parameters: bytes,
@@ -84,14 +84,17 @@ class Request:
         self.args.clear()
 
     def response(self,
-                 body=b'',
+                 body: Union[str, bytes] = b'',
                  code: int = 200,
                  headers: Union[dict, None] = None,
-                 status_code: Union[dict, None] = None
+                 status_code: Union[str, None] = None
                  ):
-        self._send(self.conn, render_http_response(self.protocol, code,
-                                                   status_code, headers,
-                                                   body))
+
+        self._send(self.conn, render_http_response(protocol=self.protocol,
+                                                   code=code,
+                                                   status_code=status_code,
+                                                   user_headers=headers,
+                                                   body=body.encode() if isinstance(body, str) else body))
 
     def response_json(self,
                       data: Union[dict, list, bytes],
