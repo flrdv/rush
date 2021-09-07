@@ -1,4 +1,4 @@
-from rush.utils.exceptions import NotFound
+from rush.utils.exceptions import NotFoundError
 
 DEFAULT_404 = """\
 <style type="text/css" media="screen">
@@ -49,12 +49,12 @@ DEFAULT_500 = """\
 def not_found(request):
     try:
         request.response_file('404.html')
-    except (NotFound, FileNotFoundError):
+    except (NotFoundError, FileNotFoundError):
         request.response(404, body=DEFAULT_404)
 
 
 def internal_error(request):
     try:
         request.response_file('500.html')
-    except (NotFound, FileNotFoundError):
+    except (NotFoundError, FileNotFoundError):
         request.response(500, body=DEFAULT_500)
