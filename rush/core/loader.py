@@ -60,7 +60,7 @@ class Loader:
                                          self.root + filename.lstrip('/'),
                                          headers)
         except IsADirectoryError:
-            raise FileNotFoundError from None
+            raise FileNotFoundError(f'file not found: {filename}') from None
 
     def close(self):
         self._cache.close()
