@@ -1,6 +1,6 @@
 import logging
 from traceback import format_exc
-from typing import Iterable, Tuple
+from typing import Dict, BinaryIO, Union, List
 
 from rush.utils.exceptions import NotFound
 from rush.core.entities import Handler, Request, CaseInsensitiveDict
@@ -9,8 +9,13 @@ logger = logging.getLogger(__name__)
 
 
 class HandlersManager:
-    def __init__(self, http_server, loader, handlers,
-                 err_handlers, redirects, auto_static_distribution=True):
+    def __init__(self,
+                 http_server,
+                 loader, handlers: Dict[str, Handler],
+                 err_handlers: Dict[str, callable],
+                 redirects: [bytes, bytes],
+                 auto_static_distribution: bool = True
+                 ):
         self.loader = loader
         self.handlers = handlers
         self.err_handlers = err_handlers
@@ -25,8 +30,8 @@ class HandlersManager:
     def call_handler(self,
                      response_http,
                      body: bytes,
-                     conn,
-                     proto_version: Tuple[str, str],
+                     conn: BinaryIO,
+                     proto_version: str,
                      method: bytes,
                      path: bytes,
                      parameters: bytes,
@@ -48,7 +53,7 @@ class HandlersManager:
                           conn=conn,
                           file=file)
 
-        if path.startswith(b'/static/') and self.auto_static_distribution:
+        if path.startswith(b'static/') and self.auto_static_distribution:
             try:
                 self.loader.send_response(conn, request_obj.path, None)
             except (NotFound, FileNotFoundError):
@@ -62,12 +67,12 @@ class HandlersManager:
             return self.not_found_handler(request_obj)
 
         try:
-            handler.func(request_obj)
+            handler(request_obj)
         except (FileNotFoundError, NotFound):
             self.not_found_handler(request_obj)
         except Exception as exc:
             logger.error('caught an unhandled exception in handler '
-                         f'"{handler.func.__name__}": {exc}')
+                         f'"{handler.__name__}": {exc}')
             logger.exception(f'detailed error trace:\n{format_exc()}')
 
             self.internal_error_handler(request_obj)
@@ -75,7 +80,11 @@ class HandlersManager:
             return request_obj
 
 
-def err_handler_wrapper(err_handler_type, func, request):
+def err_handler_wrapper(
+        err_handler_type: str,
+        func: callable,
+        request: Request
+        ):
     try:
         func(request)
     except Exception as exc:
@@ -83,19 +92,26 @@ def err_handler_wrapper(err_handler_type, func, request):
                      f'{func.__name__}): {exc}\nFull traceback:\n{format_exc()}')
 
 
-def _pick_handler(handlers: Iterable[Handler], request):
-    acceptable_handler_paths = {request.path, '*'}
+def _filter_handlers(handlers: List[Handler], request: Request) -> Union[callable, None]:
+    request_method = request.method
 
     for handler in handlers:
-        if handler.path_route not in acceptable_handler_paths and not handler.any_paths:
+        if request_method not in handler.methods:
             continue
 
-        if request.method not in handler.methods:
+        if handler.filter and not handler.filter(request):
             continue
 
-        if handler.filter is not None and not handler.filter(request):
-            continue
+        return handler.func
 
-        return handler
 
-    return None
+def _pick_handler(handlers: Dict, request: Request) -> Union[callable, None]:
+    """
+    :param handlers: Dict[routing_path, Handler], but contains field `all: [Handler...]`
+                     that contains list of handlers, which route all paths
+    """
+
+    if request.path not in handlers:
+        return _filter_handlers(handlers[all], request)
+
+    return handlers[request.path].func
