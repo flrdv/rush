@@ -5,8 +5,9 @@ from rush.core import loader as loaderlib, entities
 from rush.utils.cache import InMemoryCache, DescriptorsCache, FileSystemCache
 
 logger = logging.getLogger('main')
-server = WebServer(port=9090, processes=None,
-                   cache=FileSystemCache)
+server = WebServer(port=9090,
+                   processes=None,
+                   cache=InMemoryCache)
 
 server.add_redirect('/easter', '/egg')
 
