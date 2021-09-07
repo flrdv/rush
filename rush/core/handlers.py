@@ -2,7 +2,7 @@ import logging
 from traceback import format_exc
 from typing import Dict, BinaryIO, Union, List
 
-from rush.utils.exceptions import NotFound
+from rush.utils.exceptions import NotFoundError
 from rush.core.entities import Handler, Request, CaseInsensitiveDict
 
 logger = logging.getLogger(__name__)
@@ -56,7 +56,7 @@ class HandlersManager:
         if path.startswith(b'/static/') and self.auto_static_distribution:
             try:
                 self.loader.send_response(conn, request_obj.path, None)
-            except (NotFound, FileNotFoundError):
+            except (NotFoundError, FileNotFoundError):
                 self.not_found_handler(request_obj)
             finally:
                 return request_obj
@@ -68,7 +68,7 @@ class HandlersManager:
 
         try:
             handler(request_obj)
-        except (FileNotFoundError, NotFound):
+        except (FileNotFoundError, NotFoundError):
             self.not_found_handler(request_obj)
         except Exception as exc:
             logger.error('caught an unhandled exception in handler '
