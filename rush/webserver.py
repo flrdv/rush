@@ -3,9 +3,9 @@ import socket
 import logging as _logging
 from signal import SIGKILL
 
-from typing import Dict
 from traceback import format_exc
 from multiprocessing import cpu_count
+from typing import Dict, Union, List, Tuple, Iterable, Type
 
 from .utils import cache as caches, httputils
 from .core import entities, httpserver, handlers, loader as loaderlib
@@ -30,31 +30,37 @@ DEFAULTPAGES_DIR = os.path.join(os.path.dirname(__file__), 'defaultpages')
 
 
 class WebServer:
-    def __init__(self, host='localhost', port=8000, max_conns=None,
-                 loader=loaderlib.Loader, cache=caches.InMemoryCache,
-                 sources_root=None, logging=True, processes=0):
+    def __init__(self,
+                 host: str = 'localhost',
+                 port: Union[int, str] = 8000,
+                 max_conns: Union[int, None] = None,
+                 loader=loaderlib.Loader,
+                 cache: Type[caches.Cache] = caches.InMemoryCache,
+                 sources_root: Union[str, None] = None,
+                 logging: bool = True,
+                 processes: Union[int, None] = 0):
         logger.disabled = not logging
 
         if processes is None:
             processes = cpu_count()
 
-        self.processes = processes
-        self.forks = []
+        self.processes: int = processes
+        self.forks: List[int] = []
 
-        self.handlers = []
-        self.err_handlers = {
+        self.handlers: dict = {all: []}
+        self.err_handlers: Dict[str, callable] = {
             'not-found': default_err_handlers.not_found,
             'internal-error': default_err_handlers.internal_error,
         }
-        self.server_events_callbacks: Dict[callable or None] = {
+        self.server_events_callbacks: Dict[str, Union[callable, None]] = {
             'on-startup': None,
             'on-shutdown': None,
         }
-        self.redirects = {}
+        self.redirects: Dict[bytes, bytes] = {}
 
         self.loader = loader(cache, root=sources_root or DEFAULTPAGES_DIR)
 
-        self.addr = (host, port)
+        self.addr: Tuple[str, Union[str, int]] = (host, port)
 
         if max_conns is None:
             max_conns = termutils.get_max_descriptors()
@@ -64,25 +70,35 @@ class WebServer:
             max_conns = termutils.set_max_descriptors(max_conns)
 
         self.max_conns = max_conns
-        self.dad = os.getpid()
+        self.dad: int = os.getpid()
 
-    def route(self, path=None, methods=None, filter_=None,
-              any_path=False):
-        if path and path[0] not in '/*':
-            path = '/' + path
+    def route(self,
+              path: Union[str, None] = None,
+              methods: Union[Iterable, None] = None,
+              filter_: Union[callable, None] = None,
+              any_path: bool = False
+              ):
+
+        if path:
+            path = path.strip('/') or '/'
 
         def decorator(func):
-            self.handlers.append(entities.Handler(func=func,
-                                                  filter_=filter_,
-                                                  path_route=path,
-                                                  methods=methods,
-                                                  any_paths=any_path))
+            handler = entities.Handler(func=func,
+                                       filter_=filter_,
+                                       path_route=path,
+                                       methods=methods,
+                                       any_paths=any_path)
+
+            if any_path:
+                self.handlers[all].append(handler)
+            else:
+                self.handlers[path] = handler
 
             return func
 
         return decorator
 
-    def err_handler(self, err_type):
+    def err_handler(self, err_type: str):
         def wrapper(func):
             self.err_handlers[err_type] = func
 
@@ -100,7 +116,8 @@ class WebServer:
 
         return func
 
-    def add_redirect(self, from_path, to, permanent=False):
+    def add_redirect(self, from_path: str, to: str,
+                     permanent: bool = False):
         headers = {
             'Location': to
         }
@@ -108,42 +125,21 @@ class WebServer:
         if not permanent:
             headers['Cache-Control'] = 'no-cache'
 
-        self.redirects[from_path.encode()] = httputils.render_http_response(protocol=('1', '1'),
+        from_path = from_path.strip('/') or '/'
+        self.redirects[from_path.encode()] = httputils.render_http_response(protocol='1.1',
                                                                             code=301,
                                                                             status_code=None,
                                                                             user_headers=headers,
                                                                             body=b'')
 
-    def add_redirects(self, redirects: dict, permanent=False):
+    def add_redirects(self, redirects: Dict[str, str], permanent=False):
         for key, value in redirects.items():
             self.add_redirect(key, value, permanent=permanent)
 
     def _i_am_dad_process(self):
         return self.dad == os.getpid()
 
-    def _unscrupulous_handlers_to_the_bottom(self):
-        """
-        To avoid handlers that accepts any requesting paths always
-        getting request instead of providing it to another handler
-        that specified filter for current request. Also filters
-        them by number of acceptable methods
-        """
-
-        any_paths_handlers = []
-
-        for handler in self.handlers:
-            if handler.any_paths:
-                self.handlers.remove(handler)
-                any_paths_handlers.append(handler)
-
-        self.handlers.extend(sorted(any_paths_handlers,
-                                    key=lambda _handler: len(_handler.methods)))
-
     def start(self):
-        # so even if such a handler in the top
-        # it won't catch all the incoming requests
-        self._unscrupulous_handlers_to_the_bottom()
-
         on_startup_event_callback = self.server_events_callbacks['on-startup']
 
         if on_startup_event_callback is not None:
