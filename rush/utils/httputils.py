@@ -5,11 +5,11 @@ from .status_codes import status_codes
 
 def format_headers(headers: dict):
     return '\n'.join(f'{key}: {value}'
-                     for key, value in headers.items())\
-               .encode()
+                     for key, value in headers.items()) \
+        .encode()
 
 
-def render_http_response(protocol: tuple,
+def render_http_response(protocol: str,
                          code: int,
                          status_code: Union[str, None],
                          user_headers: dict,
@@ -27,10 +27,9 @@ def render_http_response(protocol: tuple,
     if auto_content_length:
         headers['Content-Length'] = len(body)
     if exclude_headers:
-        map(headers.pop, exclude_headers)
+        set(map(headers.pop, exclude_headers))
 
     status_description = status_code or status_codes.get(code, 'NO STATUS CODE')
-    protocol = f'HTTP/{".".join(protocol)}'.encode()
 
     # TODO: in Python 3.11, they promised to make C-style formatting
     #       as fast as f-strings, but only if string is simple (%s, %r, %a).
@@ -38,24 +37,26 @@ def render_http_response(protocol: tuple,
 
     # I'm not using format_headers() function here just to avoid useless calling
     # as everybody knows, functions' calls are a bit expensive in CPython
-    return b'%s %d %s\r\n%s\r\n\r\n%s' % (protocol, code, status_description.encode(),
-                                          '\r\n'.join(f'{key}: {value}'
-                                                      for key, value in headers.items())
-                                                .encode(),
-                                          body if isinstance(body, bytes) else body.encode())
+    return b'HTTP/%s %d %s\r\n%s\r\n\r\n%s' % (protocol.encode(), code, status_description.encode(),
+                                               '\r\n'.join(f'{key}: {value}'
+                                                           for key, value in headers.items())
+                                               .encode(),
+                                               body if isinstance(body, bytes) else body.encode())
 
 
-def render_http_request(method: bytes, path: str, protocol: tuple,
-                        headers: dict, body: bytes, chunked: bool = False):
+def render_http_request(method: bytes,
+                        path: str,
+                        protocol: str,
+                        headers: dict,
+                        body: Union[bytes, str],
+                        chunked: bool = False):
     if not chunked and 'content-length' not in headers:
         headers['content-length'] = len(body)
 
-    protocol = f'HTTP/{".".join(protocol)}'.encode()
-
-    return b'%s %s %s\r\n%s\r\n\r\n%s' % (method, path.encode(), protocol,
-                                          '\r\n'.join(f'{key}: {value}'
-                                                      for key, value in headers.items()).encode(),
-                                          body)
+    return b'%s %s HTTP/%s\r\n%s\r\n\r\n%s' % (method, path.encode(), protocol.encode(),
+                                               '\r\n'.join(f'{key}: {value}'
+                                                           for key, value in headers.items()).encode(),
+                                               body.encode() if isinstance(body, str) else body)
 
 
 def generate_chunked_data(fd, chunk_length=4096):
@@ -83,8 +84,8 @@ def generate_chunked_data(fd, chunk_length=4096):
             # no more beer, get the fuck out
 
             yield (
-                b'%s\r\n%s\r\n' % (hex(len(prev_chunk))[2:].encode(), prev_chunk) +
-                b'0\r\n\r\n'
+                    b'%s\r\n%s\r\n' % (hex(len(prev_chunk))[2:].encode(), prev_chunk) +
+                    b'0\r\n\r\n'
             )
             return
 
