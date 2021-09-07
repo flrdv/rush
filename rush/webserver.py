@@ -211,14 +211,14 @@ class WebServer:
         self.stop()
 
     def stop(self):
+        logger.info('shutting down: clearing cache')
+        self.loader.close()
+
         if self._i_am_dad_process():
             on_shutdown_event_callback = self.server_events_callbacks['on-shutdown']
 
             if on_shutdown_event_callback is not None:
                 on_shutdown_event_callback()
-
-            logger.info('clearing cache')
-            self.loader.close()
 
             if self.forks:
                 logger.info('killing server forks')
