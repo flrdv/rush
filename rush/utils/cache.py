@@ -23,13 +23,13 @@ logger = logging.getLogger(__name__)
 def _file_length_from_fd(fd, seek_to_begin=False) -> int:
     fd.seek(0, SEEK_END)
 
-    if seek_to_begin:
-        length = fd.tell()
-        fd.seek(0)
+    if not seek_to_begin:
+        return fd.tell()
 
-        return length
+    length = fd.tell()
+    fd.seek(0)
 
-    return fd.tell()
+    return length
 
 
 def _render_static_file_headers(filename, content_length,
@@ -86,14 +86,12 @@ class Cache:
         """
         Adds file to cache. Filename should be absolute path
         """
-        ...
 
     def get_file(self, filename: str):
         """
         This method isn't used internally, but created to just exist
         in case of user will need to get a content of file
         """
-        ...
 
     def send_file(self,
                   http_send: 'HttpServer.send',
@@ -108,20 +106,17 @@ class Cache:
 
         If custom headers are given, headers are re-rendering
         """
-        ...
 
     def start(self):
         """
         Function that is being called after initialization caching implementation's
         object. May start a thread, do some calculations, or nothing at all
         """
-        ...
 
     def close(self):
         """
         For example, when server is shutting down, this method will be called
         """
-        ...
 
 
 class InMemoryCache(Cache):
@@ -140,9 +135,11 @@ class InMemoryCache(Cache):
         # their rendered length and total content length
         self.headers: Dict[str, Tuple[dict, int, int]] = {}
 
-        self._running = True
+        self._running = False
 
     def _events_listener(self):
+        self._running = True
+
         while self._running:
             for event in self.inotify.event_gen(yield_nones=False, timeout_s=.5):
                 # otherwise, previous line could be much more longer than it should
@@ -187,20 +184,22 @@ class InMemoryCache(Cache):
                   http_send,
                   conn,
                   filename: str,
-                  headers=None
+                  headers: Union[dict, None] = None
                   ) -> None:
         if filename not in self.cached_files:
-            self.add_file(filename, headers=headers)
-        elif headers:
+            self.add_file(filename)
+
+        if headers:
             original, body_offset, content_length = self.headers[filename]
             rendered_headers = _render_static_file_headers(filename,
                                                            content_length,
                                                            user_headers={
                                                                **original, **headers
                                                            })
-            return http_send(conn, rendered_headers + self.cached_files[filename][body_offset:])
-
-        http_send(conn, self.cached_files[filename])
+            http_send(conn,
+                      rendered_headers + self.cached_files[filename][body_offset:])
+        else:
+            http_send(conn, self.cached_files[filename])
 
     def start(self):
         Thread(target=self._events_listener).start()
