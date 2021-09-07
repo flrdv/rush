@@ -1,4 +1,3 @@
-import time
 import socket
 import logging
 import mimetypes
@@ -56,7 +55,7 @@ def _render_static_file_headers(filename, content_length,
     if content_length is not None:
         headers['Content-Length'] = content_length
 
-    return render_http_response(protocol=('1', '1'),
+    return render_http_response(protocol='1.1',
                                 code=200,
                                 status_code='OK',
                                 user_headers=headers,
