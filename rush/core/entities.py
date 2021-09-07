@@ -12,6 +12,10 @@ from rush.utils.httputils import (parse_params,
                                   render_http_response,
                                   render_http_request)
 
+ALL_METHODS = {b'GET', b'HEAD', b'POST', b'PUT',
+               b'DELETE', b'CONNECT', b'OPTIONS',
+               b'TRACE', b'PATCH'}
+
 
 class Handler:
     def __init__(self, func, filter_, path_route,
@@ -28,9 +32,7 @@ class Handler:
         if methods:
             self.methods = {method.upper().encode() for method in methods}
         else:
-            self.methods = {b'GET', b'HEAD', b'POST', b'PUT',
-                            b'DELETE', b'CONNECT', b'OPTIONS',
-                            b'TRACE', b'PATCH'}
+            self.methods = ALL_METHODS
 
 
 class Request:
