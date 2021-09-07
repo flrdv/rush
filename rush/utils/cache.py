@@ -149,11 +149,9 @@ class InMemoryCache(Cache):
                 _, event_types, file, _ = event
 
                 if 'IN_MODIFY' in event_types:
-                    internal_filename = '/' + file.lstrip('/')
-
                     with open(file, 'rb') as fd:
                         new_content = fd.read()
-                        rendered_headers = _render_static_file_headers(internal_filename, fd.tell())
+                        rendered_headers = _render_static_file_headers(file, fd.tell())
                         self.cached_files[file] = rendered_headers + new_content
 
                     logger.info(f'InMemoryCache: updated file "{file}"')
