@@ -36,7 +36,6 @@ class Protocol:
         self.parameters = b''
         self.fragment = None
         self.body = b''
-        # self.chunked = False
         self.file = False
 
         self.received = False
@@ -44,7 +43,7 @@ class Protocol:
         self._on_chunk = None
         self._on_complete = None
 
-    def on_url(self, url):
+    def on_url(self, url: bytes):
         url = decode_url(url)
 
         if b'?' in url:
@@ -55,7 +54,7 @@ class Protocol:
         elif b'#' in self.parameters:
             url, self.fragment = url.split(b'#', 1)
 
-        self.path = url
+        self.path = url.strip(b'/') or b'/'
 
     def on_header(self, name: bytes, value: bytes):
         self.headers[name.decode()] = value.decode()
@@ -89,12 +88,10 @@ class Protocol:
             self._call_handler()
 
     def _call_handler(self):
-        http_version = self.parser.get_http_version()
-
         return self.call_handler(self.send_http_response,
                                  self.body,
                                  self.conn,
-                                 (http_version[0], http_version[2]),
+                                 self.parser.get_http_version(),
                                  self.parser.get_method(),
                                  self.path,
                                  self.parameters,
