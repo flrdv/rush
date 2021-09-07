@@ -294,7 +294,7 @@ class DescriptorsCache(Cache):
     def close(self):
         self.headers.clear()
 
-        for fd in self.files:
+        for fd in self.files.values():
             fd.close()
 
     def __del__(self):
@@ -312,9 +312,9 @@ class FileSystemCache(Cache):
 
     def __init__(self):
         # filename: (read-only fd of source, length of content)
-        self.original_descriptors: Dict[str, Tuple[BinaryIO, int]] = {}
+        self.original_descriptors: Dict[str, BinaryIO] = {}
         # filename: (fd, length of all the content)
-        self.temporary_descriptors: Dict[str, Tuple[BinaryIO, int]] = {}
+        self.headers_descriptors: Dict[str, Tuple[BinaryIO, int]] = {}
         # filename: default headers
         self.headers: Dict[str, dict] = {}
 
@@ -327,34 +327,6 @@ class FileSystemCache(Cache):
 
         self._running = True
 
-    def _events_listener(self):
-        while self._running:
-            for event in self.inotify.event_gen(yield_nones=False, timeout_s=2):
-                # otherwise, previous line could be much more longer than it should
-                _, event_types, file, _ = event
-
-                if 'IN_MODIFY' in event_types:
-                    internal_filename = '/' + file.lstrip('/')
-                    origin_fd, _ = self.original_descriptors[internal_filename]
-                    origin_fd_len = _file_length_from_fd(origin_fd)
-                    copy_fd, _ = self.temporary_descriptors[internal_filename]
-                    copy_fd.seek(0)
-                    copy_fd.write(
-                        _render_static_file_headers(
-                            internal_filename,
-                            origin_fd_len,
-                            user_headers=self.headers[internal_filename]
-                        )
-                    )
-                    _sendfile(copy_fd.fileno(), origin_fd.fileno(), 0, origin_fd_len)
-                    # remove everything else in cases that new content is shorter
-                    # than it was before
-                    copy_fd.truncate()
-                    self.original_descriptors[internal_filename] = (origin_fd, origin_fd_len)
-                    self.temporary_descriptors[internal_filename] = (copy_fd, copy_fd.tell())
-
-                    logger.info(f'FileSystemCache: updated file "{file}"')
-
     def add_file(self,
                  filename: str,
                  headers: Union[dict, None] = None
@@ -363,28 +335,20 @@ class FileSystemCache(Cache):
             raise FileExistsError
 
         origin_fd = open(filename, 'rb')
-        origin_fd_len = _file_length_from_fd(origin_fd)
-        self.original_descriptors[filename] = (origin_fd, origin_fd_len)
-        new_filename = '.cache/' + basename(filename)
+        self.original_descriptors[filename] = origin_fd
+        headers_filename = '.cache/' + basename(filename)
 
-        if not os.path.exists(new_filename):
-            with open(new_filename, 'wb') as new_file:
+        if not os.path.exists(headers_filename):
+            with open(headers_filename, 'wb') as new_file:
                 new_file.write(
                     _render_static_file_headers(
-                        filename, origin_fd_len
+                        filename, _file_length_from_fd(origin_fd)
                     )
                 )
                 new_file.flush()
-                _sendfile(
-                    new_file.fileno(), origin_fd.fileno(), 0, origin_fd_len
-                )
 
-        new_fd = open(new_filename, 'rb')
-        new_fd_len = _file_length_from_fd(new_fd)
-        self.temporary_descriptors[filename] = (
-            new_fd,
-            new_fd_len
-        )
+        new_fd = open(headers_filename, 'rb')
+        self.headers_descriptors[filename] = (new_fd, _file_length_from_fd(new_fd))
         self.headers[filename] = headers or {}
 
     def get_file(self, filename: str):
@@ -393,11 +357,10 @@ class FileSystemCache(Cache):
         try to get file content from cache
         """
 
-        fd, _ = self.original_descriptors[filename]
+        fd = self.original_descriptors[filename]
         fd.seek(0)
-        content = fd.read()
 
-        return content
+        return fd.read()
 
     def send_file(self,
                   http_send: 'HttpServer.send',
@@ -408,16 +371,24 @@ class FileSystemCache(Cache):
         if filename not in self.original_descriptors:
             self.add_file(filename)
 
-        temp_fd, length = self.temporary_descriptors[filename]
-        _sendfile(conn.fileno(), temp_fd.fileno(), 0, length)
+        (headers_fd, headers_fd_len), original_fd = self.headers_descriptors[filename], \
+                                                    self.original_descriptors[filename]  # noqa: E127
+        _sendfile(conn.fileno(), headers_fd.fileno(), 0, headers_fd_len)
+        _sendfile(conn.fileno(), original_fd.fileno(), 0, _file_length_from_fd(original_fd))
 
     def close(self):
-        for fd, _ in self.original_descriptors.values():
+        for fd in self.original_descriptors.values():
             fd.close()
 
-        for temp_fd, _ in self.temporary_descriptors.values():
+        print('headers descriptors:', self.headers_descriptors)
+
+        for temp_fd, _ in self.headers_descriptors.values():
             temp_fd.close()
-            os.remove(temp_fd.name)
+
+            try:
+                os.remove(temp_fd.name)
+            except FileNotFoundError:
+                logger.error(f'{temp_fd.name}: already deleted')
 
     def __del__(self):
         self.close()
