@@ -58,7 +58,10 @@ class WebServer:
         }
         self.redirects: Dict[bytes, bytes] = {}
 
-        self.loader = loader(cache, root=sources_root or DEFAULTPAGES_DIR)
+        self.loader_class = loader
+        self.loader = None
+        self.cache = cache
+        self.sources_root = sources_root
 
         self.addr: Tuple[str, Union[str, int]] = (host, port)
 
@@ -80,7 +83,7 @@ class WebServer:
               ):
 
         if path:
-            path = path.strip('/') or '/'
+            path = path.rstrip('/') or '/'
 
         def decorator(func):
             handler = entities.Handler(func=func,
@@ -125,7 +128,7 @@ class WebServer:
         if not permanent:
             headers['Cache-Control'] = 'no-cache'
 
-        from_path = from_path.strip('/') or '/'
+        from_path = from_path.rstrip('/') or '/'
         self.redirects[from_path.encode()] = httputils.render_http_response(protocol='1.1',
                                                                             code=301,
                                                                             status_code=None,
@@ -140,11 +143,6 @@ class WebServer:
         return self.dad == os.getpid()
 
     def start(self):
-        on_startup_event_callback = self.server_events_callbacks['on-startup']
-
-        if on_startup_event_callback is not None:
-            on_startup_event_callback(self.loader)
-
         ip, port = self.addr
 
         if self.processes and termutils.is_wsl():
@@ -185,7 +183,14 @@ class WebServer:
             logger.error('failed to bind server: aborted by user')
             return
 
+        self.loader = self.loader_class(self.cache, root=self.sources_root or DEFAULTPAGES_DIR)
+
         if self._i_am_dad_process():
+            on_startup_event_callback = self.server_events_callbacks['on-startup']
+
+            if on_startup_event_callback is not None:
+                on_startup_event_callback(self.loader)
+
             logger.info(f'running http server on {ip}:{port}')
 
         http_server = httpserver.HttpServer(sock, self.max_conns)
@@ -211,8 +216,11 @@ class WebServer:
         self.stop()
 
     def stop(self):
-        logger.info('shutting down: clearing cache')
-        self.loader.close()
+        if not self.loader:
+            logger.error('shutting down: failed to clear cache: loader hasn\'t been initialized')
+        else:
+            logger.info('shutting down: clearing cache')
+            self.loader.close()
 
         if self._i_am_dad_process():
             on_shutdown_event_callback = self.server_events_callbacks['on-shutdown']
