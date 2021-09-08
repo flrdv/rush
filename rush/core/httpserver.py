@@ -54,7 +54,7 @@ class Protocol:
         elif b'#' in self.parameters:
             url, self.fragment = url.split(b'#', 1)
 
-        self.path = url.rstrip(b'/')
+        self.path = url.rstrip(b'/') or b'/'
 
     def on_header(self, name: bytes, value: bytes):
         self.headers[name.decode()] = value.decode()
