@@ -1,4 +1,5 @@
 from typing import Union, Tuple
+from string import hexdigits
 
 from .status_codes import status_codes
 
@@ -110,9 +111,8 @@ def parse_params(params: bytes):
     return pairs
 
 
-_hexdig = '0123456789ABCDEFabcdef'
 _hextobyte = {(a + b).encode(): bytes.fromhex(a + b)
-              for a in _hexdig for b in _hexdig}
+              for a in hexdigits for b in hexdigits}
 
 
 def decode_url(bytestring):
