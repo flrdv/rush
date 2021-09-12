@@ -3,15 +3,14 @@ import socket
 import logging as _logging
 from signal import SIGKILL
 
-from typing import Dict
 from traceback import format_exc
 from multiprocessing import cpu_count
+from typing import Dict, Union, List, Tuple, Iterable, Type
 
-from .utils import cache as caches
-from .core import entities, httpserver, handlers
-from .core.utils import (termutils, default_err_handlers, sockutils,
-                         httputils)
-from .core import loader as loaderlib
+from .utils import cache as caches, httputils
+from .core import entities, httpserver, handlers, loader as loaderlib
+from .core.utils import (termutils, default_err_handlers, sockutils)
+
 
 if not termutils.is_linux():
     raise RuntimeError('Rush-webserver is only for linux. Ave Maria!')
@@ -22,7 +21,7 @@ if not os.path.exists('logs'):
 _logging.basicConfig(level=_logging.DEBUG,  # noqa
                      format='[%(asctime)s] [%(levelname)s] %(name)s: %(message)s',
                      handlers=[
-                         _logging.FileHandler("logs/handlers.log"),
+                         _logging.FileHandler("logs/webserver.log"),
                          _logging.StreamHandler()]
                      )
 logger = _logging.getLogger(__name__)
@@ -31,31 +30,40 @@ DEFAULTPAGES_DIR = os.path.join(os.path.dirname(__file__), 'defaultpages')
 
 
 class WebServer:
-    def __init__(self, host='localhost', port=8000, max_conns=None,
-                 loader=loaderlib.Loader, cache=caches.DynamicInMemoryCache,
-                 sources_root=None, logging=True, processes=0):
+    def __init__(self,
+                 host: str = 'localhost',
+                 port: Union[int, str] = 8000,
+                 max_conns: Union[int, None] = None,
+                 loader=loaderlib.Loader,
+                 cache: Type[caches.Cache] = caches.InMemoryCache,
+                 sources_root: Union[str, None] = None,
+                 logging: bool = True,
+                 processes: Union[int, None] = 0):
         logger.disabled = not logging
 
         if processes is None:
             processes = cpu_count()
 
-        self.processes = processes
-        self.forks = []
+        self.processes: int = processes
+        self.forks: List[int] = []
 
-        self.handlers = []
-        self.err_handlers = {
+        self.handlers: dict = {all: []}
+        self.err_handlers: Dict[str, callable] = {
             'not-found': default_err_handlers.not_found,
             'internal-error': default_err_handlers.internal_error,
         }
-        self.server_events_callbacks: Dict[callable or None] = {
+        self.server_events_callbacks: Dict[str, Union[callable, None]] = {
             'on-startup': None,
             'on-shutdown': None,
         }
-        self.redirects = {}
+        self.redirects: Dict[bytes, bytes] = {}
 
-        self.loader = loader(cache, root=sources_root or DEFAULTPAGES_DIR)
+        self.loader_class = loader
+        self.loader = None
+        self.cache = cache
+        self.sources_root = sources_root
 
-        self.addr = (host, port)
+        self.addr: Tuple[str, Union[str, int]] = (host, port)
 
         if max_conns is None:
             max_conns = termutils.get_max_descriptors()
@@ -65,25 +73,35 @@ class WebServer:
             max_conns = termutils.set_max_descriptors(max_conns)
 
         self.max_conns = max_conns
-        self.dad = os.getpid()
+        self.dad: int = os.getpid()
 
-    def route(self, path=None, methods=None, filter_=None,
-              any_path=False):
-        if path and path[0] not in '/*':
-            path = '/' + path
+    def route(self,
+              path: Union[str, None] = None,
+              methods: Union[Iterable, None] = None,
+              filter_: Union[callable, None] = None,
+              any_path: bool = False
+              ):
+
+        if path:
+            path = path.rstrip('/') or '/'
 
         def decorator(func):
-            self.handlers.append(entities.Handler(func=func,
-                                                  filter_=filter_,
-                                                  path_route=path,
-                                                  methods=methods,
-                                                  any_paths=any_path))
+            handler = entities.Handler(func=func,
+                                       filter_=filter_,
+                                       path_route=path,
+                                       methods=methods,
+                                       any_paths=any_path)
+
+            if any_path:
+                self.handlers[all].append(handler)
+            else:
+                self.handlers[path] = handler
 
             return func
 
         return decorator
 
-    def err_handler(self, err_type):
+    def err_handler(self, err_type: str):
         def wrapper(func):
             self.err_handlers[err_type] = func
 
@@ -101,26 +119,30 @@ class WebServer:
 
         return func
 
-    def add_redirect(self, from_path, to):
-        self.redirects[from_path.encode()] = httputils.render_http_response(protocol=('1', '1'),
-                                                                            status_code=301,
-                                                                            status_code_desc=None,
-                                                                            user_headers={'Location': to},
+    def add_redirect(self, from_path: str, to: str,
+                     permanent: bool = False):
+        headers = {
+            'Location': to
+        }
+
+        if not permanent:
+            headers['Cache-Control'] = 'no-cache'
+
+        from_path = from_path.rstrip('/') or '/'
+        self.redirects[from_path.encode()] = httputils.render_http_response(protocol='1.1',
+                                                                            code=301,
+                                                                            status_code=None,
+                                                                            user_headers=headers,
                                                                             body=b'')
 
-    def add_redirects(self, redirects: dict):
+    def add_redirects(self, redirects: Dict[str, str], permanent=False):
         for key, value in redirects.items():
-            self.add_redirect(key, value)
+            self.add_redirect(key, value, permanent=permanent)
 
     def _i_am_dad_process(self):
         return self.dad == os.getpid()
 
     def start(self):
-        on_startup_event_callback = self.server_events_callbacks['on-startup']
-
-        if on_startup_event_callback is not None:
-            on_startup_event_callback(self.loader)
-
         ip, port = self.addr
 
         if self.processes and termutils.is_wsl():
@@ -161,7 +183,14 @@ class WebServer:
             logger.error('failed to bind server: aborted by user')
             return
 
+        self.loader = self.loader_class(self.cache, root=self.sources_root or DEFAULTPAGES_DIR)
+
         if self._i_am_dad_process():
+            on_startup_event_callback = self.server_events_callbacks['on-startup']
+
+            if on_startup_event_callback is not None:
+                on_startup_event_callback(self.loader)
+
             logger.info(f'running http server on {ip}:{port}')
 
         http_server = httpserver.HttpServer(sock, self.max_conns)
@@ -169,6 +198,7 @@ class WebServer:
                                                     self.handlers, self.err_handlers,
                                                     self.redirects)
         http_server.on_message_complete = handlers_manager.call_handler
+        self.loader.http_send = http_server.send
 
         while True:
             try:
@@ -186,6 +216,12 @@ class WebServer:
         self.stop()
 
     def stop(self):
+        if not self.loader:
+            logger.error('shutting down: failed to clear cache: loader hasn\'t been initialized')
+        else:
+            logger.info('shutting down: clearing cache')
+            self.loader.close()
+
         if self._i_am_dad_process():
             on_shutdown_event_callback = self.server_events_callbacks['on-shutdown']
 
@@ -195,9 +231,9 @@ class WebServer:
             if self.forks:
                 logger.info('killing server forks')
 
-            for child in self.forks:
-                os.kill(child, SIGKILL)
-                logger.debug('killed child: ' + str(child))
+                for child in self.forks:
+                    os.kill(child, SIGKILL)
+                    logger.debug('killed child: ' + str(child))
 
             logger.info('web-server has been stopped. Good bye')
             os.abort()

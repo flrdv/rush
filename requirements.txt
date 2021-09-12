@@ -1,3 +1,4 @@
 inotify~=0.2.10
 setuptools~=45.2.0
 httptools~=0.2.0
+pysimdjson~=4.0.2

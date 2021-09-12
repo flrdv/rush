@@ -1,115 +1,391 @@
-import os.path
+import socket
 import logging
+import mimetypes
 from threading import Thread
 from traceback import format_exc
+import os
+from os.path import basename
+from os import sendfile, SEEK_END
+from typing import Union, Dict, Tuple, BinaryIO
 
 import inotify.adapters
 from inotify.calls import InotifyError
-from inotify.constants import IN_MODIFY
 
-from rush.core.utils import httputils
+from ..core.httpserver import HttpServer  # just for type hint in Cache class
+from .httputils import render_http_response, generate_chunked_data
+
+# disable inotify logs cause they're useless
+logging.getLogger('inotify.adapters').disabled = True
 
 logger = logging.getLogger(__name__)
 
 
-class DynamicInMemoryCache:
+def _file_length_from_fd(fd, seek_to_begin=False) -> int:
+    fd.seek(0, SEEK_END)
+
+    if not seek_to_begin:
+        return fd.tell()
+
+    length = fd.tell()
+    fd.seek(0)
+
+    return length
+
+
+def _render_static_file_headers(filename, content_length,
+                                exclude_headers=(),
+                                chunked_transmission=False,
+                                user_headers=None) -> bytes:
+    mime, encoding = mimetypes.guess_type(filename)
+
+    if mime is None:
+        mime = 'application/octet-stream'
+
+    headers = {
+        'Content-Type': mime,
+        **(user_headers or {})
+    }
+
+    if encoding is not None:
+        headers['Content-Encoding'] = encoding
+
+    if chunked_transmission:
+        headers['Transfer-Encoding'] = 'chunked'
+
+    if content_length is not None:
+        headers['Content-Length'] = content_length
+
+    return render_http_response(protocol='1.1',
+                                code=200,
+                                status_code='OK',
+                                user_headers=headers,
+                                body=b'',
+                                exclude_headers=exclude_headers,
+                                auto_content_length=False)
+
+
+def _sendfile(out_fd, in_fd, offset, length):
+    sent = sendfile(out_fd, in_fd, offset, length)
+
+    if sent == length:
+        return
+
+    while sent != 0:
+        sent = sendfile(out_fd, in_fd, offset, length)
+
+
+class Cache:
+    """
+    The base class for all cache implementations
+    """
+
+    def add_file(self,
+                 filename: str,
+                 headers: Union[dict, None] = None
+                 ):
+        """
+        Adds file to cache. Filename should be absolute path
+        """
+
+    def get_file(self, filename: str):
+        """
+        This method isn't used internally, but created to just exist
+        in case of user will need to get a content of file
+        """
+
+    def send_file(self,
+                  http_send: 'HttpServer.send',
+                  conn: 'socket.socket',
+                  filename: str,
+                  headers: Union[dict, None] = None
+                  ):
+        """
+        Receives function for pushing bytes string to http server,
+        connection with user, absolute path to file that needs to
+        be send to user, and additional headers
+
+        If custom headers are given, headers are re-rendering
+        """
+
+    def start(self):
+        """
+        Function that is being called after initialization caching implementation's
+        object. May start a thread, do some calculations, or nothing at all
+        """
+
+    def close(self):
+        """
+        For example, when server is shutting down, this method will be called
+        """
+
+
+class InMemoryCache(Cache):
     """
     Keeps file content in memory, updates it in the separated thread if file modifies
+
+    Has good latency and a lot of RPS, the best choice for multi-processed configurations.
+    But has high memory consumption: it loads files to the memory, in every process
     """
 
     def __init__(self):
         self.inotify = inotify.adapters.Inotify()
 
-        self.cached_files = {}
-        self.get = self.cached_files.get
+        self.cached_files: Dict[str, bytes] = {}  # full_file_name: rendered_content
+        # original, non-rendered headers for each file,
+        # their rendered length and total content length
+        self.headers: Dict[str, Tuple[dict, int, int]] = {}
 
-        self.cached_responses_headers = {}
+        self._running = False
 
     def _events_listener(self):
-        for event in self.inotify.event_gen(yield_nones=False):
-            _, event_types, path, filename = event
+        self._running = True
 
-            if IN_MODIFY in event_types:
-                file_path = os.path.join(path, filename)
+        while self._running:
+            for event in self.inotify.event_gen(yield_nones=False, timeout_s=.5):
+                # otherwise, previous line could be much more longer than it should
+                _, event_types, file, _ = event
 
-                with open(file_path, 'rb') as fd:
-                    self.cached_files[file_path] = fd.read()
+                if 'IN_MODIFY' in event_types:
+                    with open(file, 'rb') as fd:
+                        new_content = fd.read()
+                        rendered_headers = _render_static_file_headers(file, fd.tell())
+                        self.cached_files[file] = rendered_headers + new_content
 
-                logger.info(f'cache: updated file PATH={path} FILENAME={filename}')
+                    logger.info(f'InMemoryCache: updated file "{file}"')
 
-    def add(self, path_to_file, actual_content):
-        self.cached_files[path_to_file] = actual_content
+    def add_file(self,
+                 filename: str,
+                 headers: Union[dict, None] = None
+                 ):
+        with open(filename, 'rb') as fd:
+            content = fd.read()
+
+        content_length = len(content)
+        rendered_headers = _render_static_file_headers(filename,
+                                                       content_length=content_length,
+                                                       user_headers=headers)
+
+        self.cached_files[filename] = rendered_headers + content
+        self.headers[filename] = (headers or {}, content_length, len(rendered_headers))
 
         try:
-            self.inotify.add_watch(path_to_file)
+            self.inotify.add_watch(filename)
+            logger.debug(f'InMemoryCache: watching file: {filename}')
         except InotifyError as exc:
-            logger.error(f'failed to start watching file {path_to_file}: {exc}'
-                         f'\nFull traceback:\n{format_exc()}')
+            logger.error(f'InMemoryCache: failed to start watching file {filename}: {exc}')
+            logger.exception(f'detailed error trace:\n{format_exc()}')
 
-    """
-    Here was get() method. I replaced it with lookup in __init__ to avoid useless
-    methods proxying
-    """
+    def get_file(self, filename: str):
+        _, _, body_offset = self.headers[filename]
 
-    def add_response(self, filename):
+        return self.cached_files[filename][body_offset:]
+
+    def send_file(self,
+                  http_send,
+                  conn,
+                  filename: str,
+                  headers: Union[dict, None] = None
+                  ) -> None:
         if filename not in self.cached_files:
-            with open(filename, 'rb') as fd:
-                self.add(filename, fd.read())
+            self.add_file(filename)
 
-        response_file = self.cached_files[filename]
-        response_headers = httputils.render_http_response(('1', '1'), 200, 'OK',
-                                                          {'Content-Length': len(response_file)}, b'')
-        self.cached_responses_headers[filename] = response_headers
-
-        return response_headers + response_file
-
-    def get_response(self, filename) -> bytes or None:
-        if filename not in self.cached_responses_headers or \
-                filename not in self.cached_files:
-            return None
-
-        return self.cached_responses_headers[filename] + self.cached_files[filename]
+        if headers:
+            original, body_offset, content_length = self.headers[filename]
+            rendered_headers = _render_static_file_headers(filename,
+                                                           content_length,
+                                                           user_headers={
+                                                               **original, **headers
+                                                           })
+            http_send(conn,
+                      rendered_headers + self.cached_files[filename][body_offset:])
+        else:
+            http_send(conn, self.cached_files[filename])
 
     def start(self):
         Thread(target=self._events_listener).start()
 
+    def close(self):
+        self._running = False
+        self.headers.clear()
+        self.cached_files.clear()
 
-class FsCache:
+    def __del__(self):
+        self.close()
+
+
+class DescriptorsCache(Cache):
     """
     Class that opens files for reading in the beginning, then reads and
-    returns content
+    returns content when there is a need to send a response
+
+    Has very good latency (in my tests, there was up to 0.075 ms average
+    response time) and very low memory consumption, but web-server works
+    with RPS of single-processed config. The best choice is to use it with
+    configured processes count of PHYSICAL (not LOGICAL) cores
+    (processes=None automatically set processes count to logical cores count)
     """
 
     def __init__(self):
         self.files = {}  # name: fd
-        self.responses = {}  # filename: headers
+        # filename: original headers and rendered headers
+        self.headers: Dict[str, Tuple[dict, bytes]] = {}
 
         self.start = lambda: 'ok'
 
-    def add(self, filename, _):
-        self.files[filename] = open(filename, 'rb')
+    def add_file(self,
+                 filename: str,
+                 headers: Union[dict, None] = None
+                 ):
+        fd = open(filename, 'rb')
+        self.files[filename] = fd
+        rendered_headers = _render_static_file_headers(filename,
+                                                       content_length=None,
+                                                       chunked_transmission=True,
+                                                       user_headers=headers)
+        self.headers[filename] = (headers or {}, rendered_headers)
 
-    def get(self, filename):
+    def get_file(self, filename):
         fd = self.files[filename]
         content = fd.read()
         fd.seek(0)
 
         return content
 
-    def add_response(self, filename):
+    def send_file(self,
+                  http_send: 'HttpServer.send',
+                  conn: 'socket.socket',
+                  filename: str,
+                  headers: Union[dict, None] = None
+                  ):
         if filename not in self.files:
-            self.add(filename, None)  # we don't need second arg
+            self.add_file(filename)
 
-        content = self.get(filename)
-        response_headers = httputils.render_http_response(('1', '1'), 200, 'OK',
-                                                          {'Content-Length': len(content)},
-                                                          b'')
-        self.responses[filename] = response_headers
+        """
+        Sending headers first
+        """
 
-        return response_headers + content
+        if headers:
+            # _, origin_headers, body_offset, content_length = self.headers[filename]
+            rendered_headers = _render_static_file_headers(filename,
+                                                           content_length=None,
+                                                           chunked_transmission=True,
+                                                           user_headers={
+                                                               **self.headers[filename][0],
+                                                               **headers
+                                                           })
+            http_send(conn, rendered_headers)
+        else:
+            http_send(conn, self.headers[filename][1])
 
-    def get_response(self, filename):
-        if filename not in self.files or filename not in self.responses:
-            return None
+        """
+        TODO: after Rush will be asynchronous, do not forget to 
+              add more async-optimized chunked transfer
+        """
 
-        return self.responses[filename] + self.get(filename)
+        fd = self.files[filename]
+        fd.seek(0)
+
+        for chunk in generate_chunked_data(fd):
+            http_send(conn, chunk)
+
+    def close(self):
+        self.headers.clear()
+
+        for fd in self.files.values():
+            fd.close()
+
+    def __del__(self):
+        self.close()
+
+
+class FileSystemCache(Cache):
+    """
+    All the added files, turning into transmission-ready temporary
+    files, and using sendfile() for delivering them to users. So,
+    it works similar to InMemoryCache, but instead of keeping files
+    in memory, we are keeping them in file system, ready to be sent
+    to network stack of os
+    """
+
+    def __init__(self):
+        # filename: (read-only fd of source, length of content)
+        self.original_descriptors: Dict[str, BinaryIO] = {}
+        # filename: (fd, length of all the content)
+        self.headers_descriptors: Dict[str, Tuple[BinaryIO, int]] = {}
+        # filename: default headers
+        self.headers: Dict[str, dict] = {}
+
+        self.start = lambda: 'ladno'
+
+        if not os.path.exists('.cache'):
+            os.mkdir('.cache')
+
+        self.inotify = inotify.adapters.Inotify()
+
+        self._running = True
+
+    def add_file(self,
+                 filename: str,
+                 headers: Union[dict, None] = None
+                 ):
+        if filename in self.original_descriptors:
+            raise FileExistsError
+
+        origin_fd = open(filename, 'rb')
+        self.original_descriptors[filename] = origin_fd
+        headers_filename = '.cache/' + basename(filename)
+
+        if not os.path.exists(headers_filename):
+            with open(headers_filename, 'wb') as new_file:
+                new_file.write(
+                    _render_static_file_headers(
+                        filename, _file_length_from_fd(origin_fd)
+                    )
+                )
+                new_file.flush()
+
+        new_fd = open(headers_filename, 'rb')
+        self.headers_descriptors[filename] = (new_fd, _file_length_from_fd(new_fd))
+        self.headers[filename] = headers or {}
+
+    def get_file(self, filename: str):
+        """
+        Shouldn't be used, but made for cases when some stupid person will
+        try to get file content from cache
+        """
+
+        fd = self.original_descriptors[filename]
+        fd.seek(0)
+
+        return fd.read()
+
+    def send_file(self,
+                  http_send: 'HttpServer.send',
+                  conn: 'socket.socket',
+                  filename: str,
+                  headers: Union[dict, None] = None
+                  ):
+        if filename not in self.original_descriptors:
+            self.add_file(filename)
+
+        (headers_fd, headers_fd_len), original_fd = self.headers_descriptors[filename], \
+                                                    self.original_descriptors[filename]  # noqa: E127
+        _sendfile(conn.fileno(), headers_fd.fileno(), 0, headers_fd_len)
+        _sendfile(conn.fileno(), original_fd.fileno(), 0, _file_length_from_fd(original_fd))
+
+    def close(self):
+        for fd in self.original_descriptors.values():
+            fd.close()
+
+        print('headers descriptors:', self.headers_descriptors)
+
+        for temp_fd, _ in self.headers_descriptors.values():
+            temp_fd.close()
+
+            try:
+                os.remove(temp_fd.name)
+            except FileNotFoundError:
+                logger.error(f'{temp_fd.name}: already deleted')
+
+    def __del__(self):
+        self.close()

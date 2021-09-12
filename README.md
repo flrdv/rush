@@ -6,7 +6,7 @@ Simple Webserver on python3, priority of which one is performance. The aim of th
 
 In master-branch I'm currently working on Rush-v2
 
-Rush-v2 is a tiny web-server (currently about ~1000 lines of code) with processor-scalability using self forks. Also implements responsing with file, smart in-memory cache.
+Rush-v2 is a tiny web-server (currently about ~1500 lines of code) with processor-scalability using self forks. Also implements responsing with file, smart in-memory cache.
 
 Unfortunataly, web-server is build on epoll, and by this reason only Linux is supported. Also using SO_REUSEPORT socket option, so Linux 3.9 and higher is supported in case of
 web-server process forking feature usage. WSL is also not supported because currently doesn't support SO_REUSEPORT option
@@ -79,7 +79,6 @@ Rush v2.3.0 benchmarks:
   - Python 3.8.5
   - Ryzen 5 2600x 6 cores/12 threads
   - 32gb ram 2133 mHz
-  - SSD Samsung 970 evo+
   - Using 12 web-server processes
   - Testing with wrk (threads: 12, connections: 1000)
 - Results:
@@ -119,7 +118,121 @@ Rush v2.3.0 benchmarks:
 
   - Simple response with parsing url parameters:
       - Not available in v2.4.0
+
+ ---
  
+ Rush v2.4.3 benchmarks:
+ 
+ - Testing configuration:
+   - Seagate BarraCuda 7200 RPM
+   - 12 web-server processes
+ 
+ - Using: `FileSystemCache`
+   - Static cached file with handler (http://localhost/):
+   
+       ```
+       Running 1m test @ http://localhost:9090/
+         12 threads and 1000 connections
+         Thread Stats   Avg      Stdev     Max   +/- Stdev
+           Latency     4.31ms    4.08ms 135.15ms   86.60%
+           Req/Sec    23.08k     5.03k   55.78k    67.16%
+         Latency Distribution
+           50%    2.65ms
+           75%    4.92ms
+           90%   10.30ms
+           99%   19.49ms
+         16525533 requests in 1.00m, 5.13GB read
+       Requests/sec: 275049.53
+       Transfer/sec:     87.35MB
+       ```
+       
+   - 404 error:
+       ```
+       Running 1m test @ http://localhost:9090/non-existing-page-or-route
+         12 threads and 1000 connections
+         Thread Stats   Avg      Stdev     Max   +/- Stdev
+           Latency     5.72ms    4.75ms 357.85ms   89.13%
+           Req/Sec    15.86k     2.28k   42.00k    76.60%
+         Latency Distribution
+           50%    4.28ms
+           75%    6.18ms
+           90%   10.73ms
+           99%   21.34ms
+         11371908 requests in 1.00m, 5.02GB read
+       Requests/sec: 189245.85
+       Transfer/sec:     85.55MB
+       ```
+      
+  - Using `InMemoryCache`:
+    - Static cached file, but with handler:
+        ```
+        Running 1m test @ http://localhost:9090/
+          12 threads and 1000 connections
+          Thread Stats   Avg      Stdev     Max   +/- Stdev
+            Latency     4.27ms    4.09ms  97.26ms   87.35%
+            Req/Sec    22.89k     5.17k   55.44k    71.38%
+          Latency Distribution
+            50%    2.64ms
+            75%    4.73ms
+            90%    9.98ms
+            99%   19.85ms
+          16393029 requests in 1.00m, 5.08GB read
+        Requests/sec: 272785.73
+        Transfer/sec:     86.63MB
+        ```
+    
+    - 404 error:
+        ```
+        Running 1m test @ http://localhost:9090/non-existing-page-or-route
+          12 threads and 1000 connections
+          Thread Stats   Avg      Stdev     Max   +/- Stdev
+            Latency     5.36ms    4.13ms 226.25ms   86.84%
+            Req/Sec    16.75k     3.18k   52.14k    72.70%
+          Latency Distribution
+             50%    3.95ms
+             75%    5.83ms
+             90%   10.52ms
+             99%   21.21ms
+          11999001 requests in 1.00m, 5.30GB read
+        Requests/sec: 199715.42
+        Transfer/sec:     90.28MB
+        ```
+      
+ - Some only-server-dependent tests:
+   - Static redirect:
+       ```
+       Running 1m test @ http://localhost:9090/easter
+         12 threads and 1000 connections
+         Thread Stats   Avg      Stdev     Max   +/- Stdev
+           Latency     3.69ms    4.07ms  93.84ms   86.62%
+           Req/Sec    29.42k     5.67k   64.14k    70.42%
+         Latency Distribution
+            50%    2.04ms
+            75%    4.03ms
+            90%    9.44ms
+            99%   19.30ms
+         21073603 requests in 1.00m, 2.59GB read
+       Requests/sec: 350665.96
+       Transfer/sec:     44.14MB
+       ```
+     
+   - Parsing url parameters and responsing:
+       ```
+       Running 1m test @ http://localhost:9090/hello?name=bill
+         12 threads and 1000 connections
+         Thread Stats   Avg      Stdev     Max   +/- Stdev
+           Latency     4.94ms    4.14ms  94.70ms   87.33%
+           Req/Sec    18.88k     3.47k   47.66k    73.48%
+         Latency Distribution
+            50%    3.52ms
+            75%    5.16ms
+            90%   10.20ms
+            99%   21.60ms
+         13534344 requests in 1.00m, 1.12GB read
+       Requests/sec: 225197.81
+       Transfer/sec:     19.11MB
+       ```
+            
  During all the tests, processor was loaded near to the 100%
  
  ---

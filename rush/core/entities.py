@@ -1,4 +1,20 @@
-from rush.core.utils.httputils import parse_qs, render_http_response
+from typing import Union
+
+try:
+    import simdjson as json
+except ImportError:
+    try:
+        import ujson as json
+    except ImportError:
+        import json
+
+from rush.utils.httputils import (parse_params,
+                                  render_http_response,
+                                  render_http_request)
+
+ALL_METHODS = {b'GET', b'HEAD', b'POST', b'PUT',
+               b'DELETE', b'CONNECT', b'OPTIONS',
+               b'TRACE', b'PATCH'}
 
 
 class Handler:
@@ -7,18 +23,16 @@ class Handler:
         self.func = func
         self.filter = filter_
         self.any_paths = any_paths
-        self.path_route = path_route.rstrip('/').encode() if path_route is not None else None
+        self.path_route = path_route.rstrip('/') if path_route is not None else None
 
         if not self.path_route:
             # we made a mistake, we fixed a mistake
-            self.path_route = b'/'
+            self.path_route = '/'
 
         if methods:
             self.methods = {method.upper().encode() for method in methods}
         else:
-            self.methods = {b'GET', b'HEAD', b'POST', b'PUT',
-                            b'DELETE', b'CONNECT', b'OPTIONS',
-                            b'TRACE', b'PATCH'}
+            self.methods = ALL_METHODS
 
 
 class Request:
@@ -31,12 +45,17 @@ class Request:
         self.protocol = None
         self.method = None
         self.path = None
-        self._parameters = None
+        self.raw_parameters = None
+        self.fragment = None
         self.headers = None
         self.body = None
         self.conn = None
+        # always means that there is chunked file
         self.file = None
         self.args = {}
+
+        self.on_chunk = lambda part: 'ok'
+        self.on_complete = lambda: 'ladno'
 
         self._http_server = http_server
         self._send = http_server.send
@@ -44,24 +63,65 @@ class Request:
 
         self._files_responses_cache = {}
 
-    def build(self, protocol, method, path, parameters,
-              headers, body, conn, file):
+    def build(self,
+              protocol: str,
+              method: bytes,
+              path: str,
+              parameters: bytes,
+              fragment: bytes,
+              headers: 'CaseInsensitiveDict',
+              body: bytes,
+              conn,
+              file: bool
+              ):
         self.protocol = protocol
         self.method = method
         self.path = path
-        self._parameters = parameters
+        self.raw_parameters = parameters
+        self.fragment = fragment
         self.headers = headers
         self.body = body
         self.conn = conn
         self.file = file
         self.args.clear()
 
-    def response(self, code, body=b'', headers=None, code_desc=None):
-        self._send(self.conn, render_http_response(self.protocol, code,
-                                                   code_desc, headers,
-                                                   body))
+    def response(self,
+                 body: Union[str, bytes] = b'',
+                 code: int = 200,
+                 headers: Union[dict, None] = None,
+                 status_code: Union[str, None] = None
+                 ):
 
-    def response_file(self, filename):
+        self._send(self.conn, render_http_response(protocol=self.protocol,
+                                                   code=code,
+                                                   status_code=status_code,
+                                                   user_headers=headers,
+                                                   body=body.encode() if isinstance(body, str) else body))
+
+    def response_json(self,
+                      data: Union[dict, list, bytes],
+                      code: int = 200,
+                      status_code: Union[str, None] = None,
+                      headers: Union[dict, None] = None
+                      ):
+        if not isinstance(data, bytes):
+            data = json.dumps(data).encode()
+
+        final_headers = {
+            'Content-Type': 'application/json',
+            **(headers or {})
+        }
+
+        self._send(self.conn, render_http_response(protocol=self.protocol,
+                                                   code=code,
+                                                   status_code=status_code,
+                                                   user_headers=final_headers,
+                                                   body=data))
+
+    def response_file(self,
+                      filename: str,
+                      headers: Union[dict, None] = None
+                      ):
         """
         Loads file from loader. If file not found, FileNotFoundError exception
         will be raised and processed by handlers manager
@@ -70,10 +130,7 @@ class Request:
         if filename == '/':
             filename = 'index.html'
 
-        return self._send(self.conn,
-
-                          self.loader.get_cached_response(filename) or
-                          self.loader.cache_and_get_response(filename))
+        self.loader.send_response(self.conn, filename, headers=headers)
 
     def raw_response(self, data: bytes):
         """
@@ -87,5 +144,49 @@ class Request:
         self._send(self.conn, data)
 
     def get_args(self):
-        if self._parameters:
-            return parse_qs(self._parameters)
+        if self.raw_parameters:
+            return parse_params(self.raw_parameters)
+
+        return {}
+
+    def get_form(self):
+        if self.method == b'POST':
+            return parse_params(self.body)
+
+        return {}
+
+    def receive_file(self, on_chunk, on_complete=None):
+        if self.file:
+            self.on_chunk = on_chunk
+            self.on_complete = on_complete
+
+    def __str__(self):
+        return render_http_request(self.method,
+                                   self.path,
+                                   self.protocol,
+                                   self.headers,
+                                   self.body,
+                                   chunked=bool(self.on_chunk)).decode()
+
+    __repr__ = __str__
+
+
+class CaseInsensitiveDict(dict):
+    def __init__(self, *args, **kwargs):
+        self.__parent = super()
+        super().__init__(*args, **kwargs)
+
+    def __getitem__(self, item):
+        return self.__parent.__getitem__(item.lower())
+
+    def __setitem__(self, key, value):
+        self.__parent.__setitem__(key.lower(), value)
+
+    def __contains__(self, item):
+        return self.__parent.__contains__(item)
+
+    def get(self, item, instead=None):
+        return self.__parent.get(item.lower(), instead)
+
+    def pop(self, key):
+        return self.__parent.pop(key.lower())

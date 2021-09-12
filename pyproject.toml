@@ -2,7 +2,8 @@
 requires = [
     "setuptools>=42",
     "wheel",
-    "http_parser",
-    "inotify"
+    "httptools",
+    "inotify",
+    "pysimdjson"
 ]
 build-backend = "setuptools.build_meta"

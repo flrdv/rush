@@ -127,3 +127,4 @@ dmypy.json
 *.iml
 linesofcode.py
 rush/tests/
+tests/
