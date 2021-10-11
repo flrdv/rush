@@ -18,12 +18,14 @@ if not termutils.is_linux():
 if not os.path.exists('logs'):
     os.mkdir('logs')
 
-_logging.basicConfig(level=_logging.DEBUG,  # noqa
-                     format='[%(asctime)s] [%(levelname)s] %(name)s: %(message)s',
-                     handlers=[
-                         _logging.FileHandler("logs/webserver.log"),
-                         _logging.StreamHandler()]
-                     )
+_logging.basicConfig(
+    level=_logging.DEBUG,
+    format='[%(asctime)s] [%(levelname)s] %(name)s: %(message)s',
+    handlers=[
+        _logging.FileHandler("logs/webserver.log"),
+        _logging.StreamHandler()
+    ]
+)
 logger = _logging.getLogger(__name__)
 
 DEFAULTPAGES_DIR = os.path.join(os.path.dirname(__file__), 'defaultpages')
