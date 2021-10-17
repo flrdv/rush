@@ -35,4 +35,4 @@ def is_linux():
 
 
 def is_wsl():
-    return 'Microsoft' in uname().release
+    return is_linux() and 'Microsoft' in uname().release
