@@ -1,5 +1,6 @@
+import asyncio
 from asyncio import Future
-from typing import Union, Any, Callable
+from typing import Union, Any, Callable, Awaitable
 
 from .cache import Cache
 from utils.status_codes import status_codes
@@ -7,12 +8,24 @@ from utils.httputils import render_http_response
 from .typehints import (HttpResponseCallback, URI, HTTPMethod,
                         HTTPVersion, Connection)
 
-"""
-webserver receives dict of handlers from dispatcher
-choosing server according to configuration
-starting the server and telling him about dispatcher
-when request received, adding dispatcher's coroutine method to a loop
-"""
+
+def make_async(func: Callable) -> Callable[[Any], Awaitable]:
+    """
+    A modern analogue for asyncio.coroutine(), that is unfortunately
+    was deprecated
+    """
+
+    async def not_real_async() -> Any:
+        return func()
+
+    return not_real_async
+
+
+def make_sure_async(func: Union[Callable[[Any], Callable],
+                                Callable[[Any], Awaitable]]) -> Callable[[Any], Awaitable]:
+    return \
+        func if asyncio.iscoroutinefunction(func) \
+        else make_async(func)
 
 
 class Request:
@@ -35,6 +48,8 @@ class Request:
         self._body: bytes = b''
 
         self.socket: Union[Connection, None] = None
+        self._on_chunk: Union[Callable, None] = None
+        self._on_complete: Union[Callable, None] = None
 
     def _build(self,
                method: HTTPMethod,
@@ -65,6 +80,25 @@ class Request:
         self._body = await self._body_future.result()
 
         return self._body
+
+    def on_chunk(self, handler: Union[Callable[[bytes], Callable],
+                                      Callable[[bytes], Awaitable]]) -> None:
+        """
+        on_chunk can receive as usual callable, as coroutines. But
+        in case of getting usual callable, we make a coroutine
+        from it, that is actually not async, but able to be ran
+        in event loop
+        """
+
+        self._on_chunk = make_sure_async(handler)
+
+    def on_complete(self, handler: Union[Callable[[bytes], Callable],
+                                         Callable[[bytes], Awaitable]]) -> None:
+        """
+        Same as on_chunk
+        """
+
+        self._on_complete = make_sure_async(handler)
 
     async def response(self,
                        code: int = 200,
