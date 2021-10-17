@@ -1,7 +1,10 @@
-from typing import Union, Tuple
+from typing import Union, Tuple, Dict, List, BinaryIO
 from string import hexdigits
 
 from .status_codes import status_codes
+
+HEX_TO_BYTE = {(a + b).encode(): bytes.fromhex(a + b)
+               for a in hexdigits for b in hexdigits}
 
 
 def format_headers(headers: dict):
@@ -13,7 +16,7 @@ def format_headers(headers: dict):
 def render_http_response(protocol: str,
                          code: int,
                          status_code: Union[str, None],
-                         user_headers: dict,
+                         user_headers: Union[dict, None],
                          body: Union[str, bytes],
                          exclude_headers: Tuple[str] = (),
                          auto_content_length: bool = True):
@@ -60,7 +63,7 @@ def render_http_request(method: bytes,
                                                body.encode() if isinstance(body, str) else body)
 
 
-def generate_chunked_data(fd, chunk_length=4096):
+def generate_chunked_data(fd: BinaryIO, chunk_length: int = 4096):
     chunk = fd.read(chunk_length)
 
     # it's a hack but anyway, we don't need 0x part
@@ -93,12 +96,12 @@ def generate_chunked_data(fd, chunk_length=4096):
         yield b'%s%s\r\n' % (chunk_length_in_hex, chunk)
 
 
-def parse_params(params: bytes):
+def parse_params(params: bytes) -> Dict[str, List]:
     """
     Returns dict with params (empty if no params given)
     """
 
-    pairs = {}
+    pairs: Dict[str, List] = {}
 
     for attr in params.split(b'&' if b'&' in params else b';'):
         key, value = attr.decode().split('=')
@@ -111,20 +114,13 @@ def parse_params(params: bytes):
     return pairs
 
 
-_hextobyte = {(a + b).encode(): bytes.fromhex(a + b)
-              for a in hexdigits for b in hexdigits}
-
-
-def decode_url(bytestring):
-    if b'%' not in bytestring:
-        return bytestring
-
+def decode_url(bytestring: bytes) -> bytes:
     bits = bytestring.split(b'%')
     decoded: bytes = bits[0]
 
     for item in bits[1:]:
         try:
-            decoded += _hextobyte[item[:2]] + item[2:]
+            decoded += HEX_TO_BYTE[item[:2]] + item[2:]
         except KeyError:
             decoded += b'%' + item
 
