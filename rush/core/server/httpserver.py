@@ -4,19 +4,20 @@ import logging
 from socket import MSG_PEEK
 from threading import Thread
 from traceback import format_exc
-from typing import Union, Dict, List, Callable, Awaitable
+from typing import Union, Dict, Tuple, Callable, Awaitable
 from select import epoll, EPOLLIN, EPOLLOUT
 
 from httptools import HttpRequestParser
 from httptools.parser.errors import HttpParserError, HttpParserCallbackError
 
-from rush.entities import CaseInsensitiveDict, Request
+from rush.typehints import Connection
 from rush.utils.httputils import decode_url
+from rush.entities import CaseInsensitiveDict, Request, ObjectPool, Cache
 
 logger = logging.getLogger(__name__)
 
 EPOLLIN_AND_EPOLLOUT = EPOLLIN | EPOLLOUT
-DEFAULT_RECV_BLOCK_SIZE = 16384  # how many bytes are receiving per 1 socket read
+RECV_BLOCK_SIZE = 16384  # how many bytes are receiving per 1 socket read
 
 
 class Protocol:
@@ -28,7 +29,7 @@ class Protocol:
 
     def __init__(self,
                  conn: socket.socket,
-                 eventloop: asyncio.BaseEventLoop,
+                 eventloop: asyncio.AbstractEventLoop,
                  request_obj: Request,
                  callback: Callable[[Request], Awaitable]
                  ):
@@ -48,6 +49,8 @@ class Protocol:
         self._on_chunk: Union[Callable[[bytes], Awaitable], None] = None
         self._on_complete: Union[Callable[[], Awaitable], None] = None
 
+        self.parser: Union[HttpRequestParser, None] = None
+
     def on_url(self, url: bytes):
         if b'%' in url:
             url = decode_url(url)
@@ -60,38 +63,34 @@ class Protocol:
         elif b'#' in self.parameters:
             url, self.fragment = url.split(b'#', 1)
 
-        self.path = url.rstrip(b'/') or b'/'
+        self.request_obj.reinit(
+            self.parser.get_method(),
+            url.rstrip(b'/') or b'/',
+            self.parser.get_http_version(),
+            self.conn
+        )
+        self.eventloop.create_task(self.callback(self.request_obj))
 
     def on_header(self, name: bytes, value: bytes):
         self.headers[name.decode()] = value.decode()
 
     def on_headers_complete(self):
+        self.request_obj.set_headers(self.headers)
+
         if self.headers.get('transfer-encoding') == 'chunked' or \
                 self.headers.get('content-type', '').startswith('multipart/'):
             self.file = True
-            self._request_obj_task = self.eventloop.create_task(
-                self.callback(
-                    
-                )
-            )
+            self._on_chunk, self._on_complete = \
+                self.request_obj.get_on_chunk(), self.request_obj.get_on_complete()
 
     def on_body(self, body: bytes):
-        if self._request_obj_task:
-            request_obj = self._request_obj_task.result()
-
-            # if request object is None, it means that we just got automatic
-            # redirect
-            if request_obj is not None:
-                # so long ang ugly only cause variables unpacking takes
-                # only 1 instruction for PVM
-                self._on_chunk, self._on_complete = request_obj.on_chunk, request_obj.on_complete
-
-            self._request_obj_task = None
-
         if self._on_chunk:
             self.eventloop.create_task(self._on_chunk(body))
         else:
             self.body += body
+
+    def on_body_complete(self):
+        self.request_obj.set_body(self.body)
 
     def on_message_complete(self):
         self.received = True
@@ -100,21 +99,25 @@ class Protocol:
             self._on_complete()
 
 
-class HttpServer:
+class EpollHttpServer:
     def __init__(self,
                  sock: socket.socket,
                  max_conns: int,
-                 callback):
+                 callback: Callable[[Request], Awaitable],
+                 objectpool: ObjectPool,
+                 cache: Cache):
         self.on_message_complete = callback
-        self.sock = sock
-        self.max_conns = max_conns
-        self.epoll = None
-        self._conns = {}  # fileno: conn
+        self.sock: Connection = sock
+        self.max_conns: int = max_conns
+        self.epoll: Union[epoll, None] = None
+        self._conns: Dict[int, Connection] = {}  # fileno: conn
+        self.objectpool = objectpool
+        self.cache = cache
 
         # every client has only one entity of parser and protocol
         # on each request, entities are just re-initializing
-        self._requests_buff = {}  # conn: (parser, protocol_instance)
-        self._responses_buff = {}  # conn: b'...'
+        self._requests_buff: Dict[Connection, Tuple[HttpRequestParser, Protocol]] = {}
+        self._responses_buff: Dict[Connection, bytes] = {}  # conn: b'...'
 
         self.eventloop = asyncio.new_event_loop()
 
@@ -122,7 +125,7 @@ class HttpServer:
         parser, protocol = self._requests_buff[conn]
 
         try:
-            parser.feed_data(conn.recv(DEFAULT_RECV_BLOCK_SIZE))
+            parser.feed_data(conn.recv(RECV_BLOCK_SIZE))
         except HttpParserCallbackError as exc:
             logger.error(f'an error occurred in callback: {exc}')
             logger.exception(f'full error trace:\n{format_exc()}')
@@ -137,7 +140,13 @@ class HttpServer:
                                       self._conns.pop(conn.fileno()))
 
         if protocol.received:
-            protocol.__init__(conn)
+            protocol.request_obj.wipe()
+            protocol.__init__(
+                conn,
+                self.eventloop,
+                protocol.request_obj,
+                self.on_message_complete
+            )
             parser.__init__(protocol)
             self._requests_buff[conn] = (parser, protocol)
 
@@ -152,9 +161,12 @@ class HttpServer:
     def _connect_handler(self, conn):
         # creating cell for conn once to avoid if-conditions in _receive_handler and
         # _response_handler every time receiving new event on socket read/write
-        protocol_instance = Protocol(self.on_message_complete,
-                                     conn,
-                                     self.send)
+        protocol_instance = Protocol(conn,
+                                     self.eventloop,
+                                     Request(
+                                         self.send, self.cache
+                                     ),
+                                     self.on_message_complete)
         new_parser = HttpRequestParser(protocol_instance)
         protocol_instance.parser = new_parser
         self._requests_buff[conn] = (new_parser, protocol_instance)
@@ -230,5 +242,5 @@ class HttpServer:
                     call_handler(receive, conn)
                 elif event & EPOLLOUT:
                     call_handler(response, conns[fileno])
-                elif event & EPOLLHUP:
-                    call_handler(disconnect, conns.pop(fileno))
+                else:
+                    raise NotImplementedError(f'unknown epoll event: {event}')
