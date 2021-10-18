@@ -1,13 +1,29 @@
-class WebServerException(Exception):
+class WebServerError(Exception):
     pass
 
 
-class FileNotCachedError(WebServerException):
+class FileNotCachedError(WebServerError):
+    pass
+
+
+class HandlerMustBeCoroutineError(WebServerError):
+    pass
+
+
+class NoMethodsProvided(WebServerError):
     pass
 
 
 class HTTPError(Exception):
-    pass
+    def __init__(self,
+                 request,
+                 **kwargs):
+        self.request = request
+
+        for key, value in kwargs.items():
+            setattr(self, key, value)
+
+        super(HTTPError, self).__init__(kwargs.get('msg', ''))
 
 
 class HTTPBadRequest(HTTPError):
@@ -18,6 +34,7 @@ class HTTPBadRequest(HTTPError):
 class HTTPUnauthorized(HTTPError):
     code = 401
     description = b'Unauthorized'
+    user = None
 
 
 class HTTPPaymentRequired(HTTPError):
@@ -48,6 +65,7 @@ class HTTPNotAcceptable(HTTPError):
 class HTTPProxyAuthenticationRequired(HTTPError):
     code = 407
     description = b'Proxy Authentication Required'
+    proxy = None
 
 
 class HTTPRequestTimeout(HTTPError):
@@ -98,16 +116,19 @@ class HTTPRequestedRangeNotSatisfiable(HTTPError):
 class HTTPExpectationFailed(HTTPError):
     code = 417
     description = b'Expectation Failed'
+    expected = None
 
 
 class HTTPInternalServerError(HTTPError):
     code = 500
     description = b'Internal Server Error'
+    traceback = None
 
 
 class HTTPNotImplemented(HTTPError):
     code = 501
     description = b'Not Implemented'
+    details = None
 
 
 class HTTPBadGateway(HTTPError):
@@ -118,6 +139,7 @@ class HTTPBadGateway(HTTPError):
 class HTTPServiceUnavailable(HTTPError):
     code = 503
     description = b'Service Unavailable'
+    service = None
 
 
 class HTTPGatewayTimeout(HTTPError):
@@ -128,3 +150,5 @@ class HTTPGatewayTimeout(HTTPError):
 class HTTPHTTPVersionNotSupported(HTTPError):
     code = 505
     description = b'HTTP Version Not Supported'
+    requested_version = None
+    supported_version = b'1.1'
