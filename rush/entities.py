@@ -2,7 +2,7 @@ import asyncio
 from asyncio import Future
 from typing import Union, Any, Callable, Awaitable
 
-from .cache import Cache
+from .sfs import SFS
 from utils.status_codes import status_codes
 from utils.httputils import render_http_response
 from .typehints import (HttpResponseCallback, URI, HTTPMethod,
@@ -31,7 +31,7 @@ def make_sure_async(func: Union[Callable[[Any], Callable],
 class Request:
     def __init__(self,
                  http_callback: HttpResponseCallback,
-                 cache: Cache):
+                 cache: SFS):
         self.http_callback = http_callback
         self.cache = cache
 
@@ -51,7 +51,7 @@ class Request:
         self._on_chunk: Union[Callable, None] = None
         self._on_complete: Union[Callable, None] = None
 
-    def _build(self,
+    def reinit(self,
                method: HTTPMethod,
                path: URI,
                protocol: HTTPVersion,
@@ -64,6 +64,25 @@ class Request:
         self._body_future.__init__()
         self._body = None
         self.socket = socket
+
+    def wipe(self):
+        """
+        A method that clears path, body and headers attributes
+        The purpose of this function is not to let already processed
+        requests live longer than it should, cause this is potential
+        DoS vulnerability. Also clearing path as it can be up to 65535
+        bytes length, not a lot, but also can be a trouble
+        """
+
+        self._body = b''
+        self._headers = None
+        self.path = b''
+
+    def set_headers(self, headers: 'CaseInsensitiveDict') -> None:
+        self._headers_future.set_result(headers)
+
+    def set_body(self, body: bytes) -> None:
+        self._body_future.set_result(body)
 
     async def headers(self) -> 'CaseInsensitiveDict':
         if self._headers:
@@ -92,6 +111,9 @@ class Request:
 
         self._on_chunk = make_sure_async(handler)
 
+    def get_on_chunk(self) -> Callable[[bytes], Awaitable]:
+        return self._on_chunk
+
     def on_complete(self, handler: Union[Callable[[bytes], Callable],
                                          Callable[[bytes], Awaitable]]) -> None:
         """
@@ -99,6 +121,9 @@ class Request:
         """
 
         self._on_complete = make_sure_async(handler)
+
+    def get_on_complete(self) -> Callable[[], Awaitable]:
+        return self._on_complete
 
     async def response(self,
                        code: int = 200,
@@ -111,7 +136,7 @@ class Request:
                 code,
                 status or status_codes[code],
                 await self.headers() if not headers else (await self.headers()).update(headers),
-                body if isinstance(body, bytes) else body.encode()
+                body
             )
         )
 
