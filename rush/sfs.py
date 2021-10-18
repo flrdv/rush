@@ -1,8 +1,8 @@
 """
-    SFS is a Static Files Subsystem - system for caching and sending
-    files to user by their path. May be used as for static content delivering,
-    as for anything else, including local server's filesystem watching
-    """
+SFS is a Static Files Subsystem - system for caching and sending
+files to user by their path. May be used as for static content delivering,
+as for anything else, including local server's filesystem watching
+"""
 
 from typing import Dict, Union
 
