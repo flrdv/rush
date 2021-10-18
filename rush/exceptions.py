@@ -80,7 +80,7 @@ class HTTPRequestEntityTooLarge(HTTPError):
     description = b'Request Entity Too Large'
 
 
-class HTTPRequest-URITooLong(HTTPError):
+class HTTPURITooLong(HTTPError):
     code = 414
     description = b'Request-URI Too Long'
 
