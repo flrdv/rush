@@ -4,15 +4,17 @@ import logging
 from socket import MSG_PEEK
 from threading import Thread
 from traceback import format_exc
-from typing import Union, Dict, Tuple, Callable, Awaitable
+from typing import Union, Dict, Tuple
 from select import epoll, EPOLLIN, EPOLLOUT
 
 from httptools import HttpRequestParser
 from httptools.parser.errors import HttpParserError, HttpParserCallbackError
 
-from rush.typehints import Connection
+from rush import exceptions
+from rush.sfs.base import SFS
 from rush.utils.httputils import decode_url
-from rush.entities import CaseInsensitiveDict, Request, ObjectPool, Cache
+from rush.typehints import Connection, Coroutine, Nothing
+from rush.entities import CaseInsensitiveDict, Request, ObjectPool
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +33,7 @@ class Protocol:
                  conn: socket.socket,
                  eventloop: asyncio.AbstractEventLoop,
                  request_obj: Request,
-                 callback: Callable[[Request], Awaitable]
+                 callback: Coroutine
                  ):
         self.conn = conn
         self.eventloop = eventloop
@@ -43,8 +45,8 @@ class Protocol:
 
         self.received: bool = False
 
-        self._on_chunk: Union[Callable[[bytes], Awaitable], None] = None
-        self._on_complete: Union[Callable[[], Awaitable], None] = None
+        self._on_chunk: Union[Coroutine, None] = None
+        self._on_complete: Union[Coroutine[Nothing], None] = None
 
         self.parser: Union[HttpRequestParser, None] = None
 
@@ -104,16 +106,16 @@ class EpollHttpServer:
     def __init__(self,
                  sock: socket.socket,
                  max_conns: int,
-                 callback: Callable[[Request], Awaitable],
+                 callback: Coroutine,
                  objectpool: ObjectPool,
-                 cache: Cache):
+                 sfs: SFS):
         self.on_message_complete = callback
         self.sock: Connection = sock
         self.max_conns: int = max_conns
         self.epoll: Union[epoll, None] = None
         self._conns: Dict[int, Connection] = {}  # fileno: conn
         self.objectpool = objectpool
-        self.cache = cache
+        self.sfs = sfs
 
         # every client has only one entity of parser and protocol
         # on each request, entities are just re-initializing
@@ -165,7 +167,7 @@ class EpollHttpServer:
         protocol_instance = Protocol(conn,
                                      self.eventloop,
                                      Request(
-                                         self.send, self.cache
+                                         self.send, self.sfs
                                      ),
                                      self.on_message_complete)
         new_parser = HttpRequestParser(protocol_instance)
@@ -183,9 +185,7 @@ class EpollHttpServer:
         try:
             handler(conn)
         except Exception as exc:
-            logger.error('Caught an unhandled exception in handler '
-                         f'"{handler.__name__}": {exc}')
-            logger.exception(f'detailed error trace:\n{format_exc()}')
+            raise exceptions.WebServerError(format_exc())
 
     def send(self, conn, data: bytes):
         sent = conn.send(data)
@@ -198,9 +198,16 @@ class EpollHttpServer:
 
         self._responses_buff[conn] += data[sent:]
 
-    def run(self):
+    def poll(self):
         if self.on_message_complete is None:
             raise RuntimeError('no callback on message complete provided')
+
+        evloop_thread = Thread(
+            name='Event-Loop Thread',
+            target=self.eventloop.run_forever
+        )
+        evloop_thread.start()
+        logger.info('event-loop thread has been started')
 
         self.sock.listen(self.max_conns)
         polling = epoll()
