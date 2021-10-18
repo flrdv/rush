@@ -38,9 +38,6 @@ class Protocol:
         self.request_obj = request_obj
         self.callback = callback
 
-        self.path = None
-        self.parameters = b''
-        self.fragment = None
         self.body = b''
         self.file = False
 
@@ -55,17 +52,21 @@ class Protocol:
         if b'%' in url:
             url = decode_url(url)
 
-        if b'?' in url:
-            url, self.parameters = url.split(b'?', 1)
+        parameters = fragment = None
 
-            if b'#' in self.parameters:
-                self.parameters, self.fragment = self.parameters.split(b'#', 1)
-        elif b'#' in self.parameters:
-            url, self.fragment = url.split(b'#', 1)
+        if b'?' in url:
+            url, parameters = url.split(b'?', 1)
+
+            if b'#' in parameters:
+                parameters, fragment = parameters.split(b'#', 1)
+        elif b'#' in url:
+            url, fragment = url.split(b'#', 1)
 
         self.request_obj.reinit(
             self.parser.get_method(),
             url.rstrip(b'/') or b'/',
+            parameters,
+            fragment,
             self.parser.get_http_version(),
             self.conn
         )
