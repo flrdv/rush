@@ -1,8 +1,10 @@
 import asyncio
+import logging
 from asyncio import Future
+from dataclasses import dataclass
 from typing import Union, Any, Dict, List, Callable, Awaitable
 
-from .sfs import SFS
+from .sfs import SFS, SimpleDevSFS
 from utils.status_codes import status_codes
 from utils.httputils import render_http_response, parse_params
 from .typehints import (HttpResponseCallback, URI, HTTPMethod,
@@ -62,7 +64,7 @@ class Request:
                fragment: URIFragment,
                protocol: HTTPVersion,
                socket: Connection):
-        self.method = method
+        self.method = method.upper()
         self.path = path
         self.raw_parameters = parameters
         self.fragment = fragment
@@ -170,17 +172,6 @@ class Request:
         return self._parsed_parameters
 
 
-class Dispatcher:
-    """
-    A base class to be inherited of for all the dispatchers implementations
-    """
-
-    async def process_request(self,
-                              request: Request
-                              ):
-        ...
-
-
 class ObjectPool:
     def __init__(self,
                  object_entity,
@@ -209,6 +200,17 @@ class ObjectPool:
             return
 
         self.pool.append(obj)
+
+
+@dataclass
+class Settings:
+    host: str = '0.0.0.0'
+    port: int = 9090
+    max_connections: Union[int, None] = None
+    processes: Union[int, None] = None
+    logging_level: int = logging.DEBUG
+    sfs: SFS = SimpleDevSFS
+    httpserver = ...
 
 
 class CaseInsensitiveDict(dict):
