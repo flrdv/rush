@@ -1,5 +1,5 @@
-from typing import Union, Tuple, Dict, List, BinaryIO
 from string import hexdigits
+from typing import Union, Tuple, Dict, List, BinaryIO
 
 from .status_codes import status_codes
 
@@ -23,17 +23,17 @@ def render_http_response(protocol: str,
     # default headers
     # TODO: add server-time header
     headers = {
-        'Server': 'rush',
-        'Connection': 'keep-alive',
+        'server': 'rush',
+        'connection': 'keep-alive',
         **(user_headers or {})
     }
 
     if auto_content_length:
-        headers['Content-Length'] = len(body)
+        headers['content-length'] = len(body)
     if exclude_headers:
         set(map(headers.pop, exclude_headers))
 
-    status_description = status_code or status_codes.get(code, 'NO STATUS CODE')
+    status_description = status_code or status_codes.get(code, 'UNKNOWN')
 
     # TODO: in Python 3.11, they promised to make C-style formatting
     #       as fast as f-strings, but only if string is simple (%s, %r, %a).
@@ -41,7 +41,7 @@ def render_http_response(protocol: str,
 
     # I'm not using format_headers() function here just to avoid useless calling
     # as everybody knows, functions' calls are a bit expensive in CPython
-    return b'HTTP/%s %d %s\r\n%s\r\n\r\n%s' % (protocol.encode(), code, status_description.encode(),
+    return b'HTTP/%s %d %s\r\n%s\r\n\r\n%s' % (protocol.encode(), code, status_description,
                                                '\r\n'.join(f'{key}: {value}'
                                                            for key, value in headers.items())
                                                .encode(),
