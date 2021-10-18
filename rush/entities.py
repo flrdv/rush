@@ -1,12 +1,13 @@
 import asyncio
 from asyncio import Future
-from typing import Union, Any, Callable, Awaitable
+from typing import Union, Any, Dict, List, Callable, Awaitable
 
 from .sfs import SFS
 from utils.status_codes import status_codes
-from utils.httputils import render_http_response
+from utils.httputils import render_http_response, parse_params
 from .typehints import (HttpResponseCallback, URI, HTTPMethod,
-                        HTTPVersion, Connection)
+                        HTTPVersion, Connection, URIParameters,
+                        URIFragment)
 
 
 def make_async(func: Callable) -> Callable[[Any], Awaitable]:
@@ -40,6 +41,9 @@ class Request:
         # typehints
         self.method: HTTPMethod = b''
         self.path: URI = b''
+        self.fragment: URIFragment = b''
+        self.raw_parameters: URIParameters = b''
+        self._parsed_parameters: Union[Dict[bytes, List[bytes]], None] = None
         self.protocol: HTTPVersion = ''
 
         self._headers_future: Union[Future, None] = None
@@ -54,10 +58,14 @@ class Request:
     def reinit(self,
                method: HTTPMethod,
                path: URI,
+               parameters: URIParameters,
+               fragment: URIFragment,
                protocol: HTTPVersion,
                socket: Connection):
         self.method = method
         self.path = path
+        self.raw_parameters = parameters
+        self.fragment = fragment
         self.protocol = protocol
         self._headers_future.__init__()
         self._headers = None
@@ -139,6 +147,38 @@ class Request:
                 body
             )
         )
+
+    def params(self) -> Dict[bytes, List[bytes]]:
+        """
+        Returns a dict with URI parameters, where keys are bytes
+        and values are lists with bytes. This may be not convenient
+        for user, but this behaviour matches RFC
+
+        Also, it isn't parsing anything until user will need it.
+        If user never called Request.params(), they also never will
+        be parsed
+
+        If no parameters provided, empty dictionary will be returned
+        """
+
+        if not self.raw_parameters:
+            return {}
+
+        if self._parsed_parameters is None:
+            self._parsed_parameters = parse_params(self.raw_parameters)
+
+        return self._parsed_parameters
+
+
+class Dispatcher:
+    """
+    A base class to be inherited of for all the dispatchers implementations
+    """
+
+    async def process_request(self,
+                              request: Request
+                              ):
+        ...
 
 
 class ObjectPool:
