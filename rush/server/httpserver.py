@@ -11,6 +11,7 @@ from httptools import HttpRequestParser
 from httptools.parser.errors import HttpParserError, HttpParserCallbackError
 
 from rush import exceptions
+from .base import HTTPServer
 from rush.sfs.base import SFS
 from rush.utils.httputils import decode_url
 from rush.typehints import Connection, Coroutine, Nothing
@@ -102,19 +103,17 @@ class Protocol:
             self._on_complete()
 
 
-class EpollHttpServer:
+class EpollHttpServer(HTTPServer):
     def __init__(self,
                  sock: socket.socket,
                  max_conns: int,
                  callback: Coroutine,
-                 objectpool: ObjectPool,
                  sfs: SFS):
         self.on_message_complete = callback
         self.sock: Connection = sock
         self.max_conns: int = max_conns
         self.epoll: Union[epoll, None] = None
         self._conns: Dict[int, Connection] = {}  # fileno: conn
-        self.objectpool = objectpool
         self.sfs = sfs
 
         # every client has only one entity of parser and protocol
@@ -198,6 +197,14 @@ class EpollHttpServer:
 
         self._responses_buff[conn] += data[sent:]
 
+    def execute_callback(self,
+                         callback: Coroutine,
+                         request: Request
+                         ):
+        self.eventloop.create_task(
+            callback(request)
+        )
+
     def poll(self):
         if self.on_message_complete is None:
             raise RuntimeError('no callback on message complete provided')
@@ -252,3 +259,14 @@ class EpollHttpServer:
                     call_handler(response, conns[fileno])
                 else:
                     raise NotImplementedError(f'unknown epoll event: {event}')
+
+    def stop(self):
+        for conn in self._conns.values():
+            conn.close()
+
+        self.epoll.close()
+        self._responses_buff.clear()
+        self._requests_buff.clear()
+
+    def __del__(self):
+        self.stop()
