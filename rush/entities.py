@@ -2,11 +2,12 @@ import asyncio
 import logging
 from asyncio import Future
 from dataclasses import dataclass
-from typing import Union, Any, Dict, List, Callable, Awaitable
+from typing import Union, Any, Dict, List, Callable, Awaitable, Type
 
-from .sfs import SFS, SimpleDevSFS
-from utils.status_codes import status_codes
-from utils.httputils import render_http_response, parse_params
+from . import sfs, server
+from .utils.status_codes import status_codes
+from .server.httpserver import EpollHttpServer
+from .utils.httputils import render_http_response, parse_params
 from .typehints import (HttpResponseCallback, URI, HTTPMethod,
                         HTTPVersion, Connection, URIParameters,
                         URIFragment)
@@ -31,10 +32,28 @@ def make_sure_async(func: Union[Callable[[Any], Callable],
         else make_async(func)
 
 
+@dataclass
+class Settings:
+    host: str = '0.0.0.0'
+    port: int = 9090
+    max_bind_retries: Union[int, None] = None
+    bind_retries_timeout: Union[int, float] = 3
+    max_connections: Union[int, None] = None
+    processes: Union[int, None] = None
+
+    logging_level: int = logging.DEBUG
+    logging_format = '[%(asctime)s] [%(levelname)s] %(name)s: %(message)s'
+    logs_dir = 'logs'
+    logs_file = 'webserver.log'
+
+    sfs: Type[sfs.base.SFS] = sfs.fd_sendfile.SimpleDevSFS
+    httpserver = EpollHttpServer
+
+
 class Request:
     def __init__(self,
                  http_callback: HttpResponseCallback,
-                 cache: SFS):
+                 cache: sfs.base.SFS):
         self.http_callback = http_callback
         self.cache = cache
 
@@ -200,17 +219,6 @@ class ObjectPool:
             return
 
         self.pool.append(obj)
-
-
-@dataclass
-class Settings:
-    host: str = '0.0.0.0'
-    port: int = 9090
-    max_connections: Union[int, None] = None
-    processes: Union[int, None] = None
-    logging_level: int = logging.DEBUG
-    sfs: SFS = SimpleDevSFS
-    httpserver = ...
 
 
 class CaseInsensitiveDict(dict):
