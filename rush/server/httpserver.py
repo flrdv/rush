@@ -2,9 +2,8 @@ import socket
 import asyncio
 import logging
 from socket import MSG_PEEK
-from threading import Thread
 from traceback import format_exc
-from typing import Union, Dict, Tuple
+from typing import Union, Dict, Tuple, Callable, Awaitable, Any
 from select import epoll, EPOLLIN, EPOLLOUT
 
 from httptools import HttpRequestParser
@@ -14,8 +13,8 @@ from rush import exceptions
 from .base import HTTPServer
 from rush.sfs.base import SFS
 from rush.utils.httputils import decode_url
+from rush.entities import CaseInsensitiveDict, Request
 from rush.typehints import Connection, Coroutine, Nothing
-from rush.entities import CaseInsensitiveDict, Request, ObjectPool
 
 logger = logging.getLogger(__name__)
 
@@ -24,22 +23,12 @@ RECV_BLOCK_SIZE = 16384  # how many bytes are receiving per 1 socket read
 
 
 class Protocol:
-    """
-    Initializing headers dictionary in the beginning, but individual for every
-    object
-    """
-    headers = CaseInsensitiveDict()
-
     def __init__(self,
                  conn: socket.socket,
-                 eventloop: asyncio.AbstractEventLoop,
                  request_obj: Request,
-                 callback: Coroutine
                  ):
         self.conn = conn
-        self.eventloop = eventloop
         self.request_obj = request_obj
-        self.callback = callback
 
         self.body = b''
         self.file = False
@@ -65,31 +54,25 @@ class Protocol:
         elif b'#' in url:
             url, fragment = url.split(b'#', 1)
 
-        self.request_obj.reinit(
-            self.parser.get_method(),
-            url.rstrip(b'/') or b'/',
-            parameters,
-            fragment,
-            self.parser.get_http_version(),
-            self.conn
-        )
-        self.eventloop.create_task(self.callback(self.request_obj))
+        self.request_obj.set_path(url)
+        self.request_obj.set_params(parameters)
+        self.request_obj.set_fragment(fragment)
 
     def on_header(self, name: bytes, value: bytes):
-        self.headers[name.decode()] = value.decode()
+        self.request_obj.set_header(name.decode(), value.decode())
 
     def on_headers_complete(self):
-        self.request_obj.set_headers(self.headers)
+        request_headers = self.request_obj.headers()
 
-        if self.headers.get('transfer-encoding') == 'chunked' or \
-                self.headers.get('content-type', '').startswith('multipart/'):
+        if request_headers.get('transfer-encoding') == 'chunked' or \
+                request_headers.get('content-type', '').startswith('multipart/'):
             self.file = True
             self._on_chunk, self._on_complete = \
                 self.request_obj.get_on_chunk(), self.request_obj.get_on_complete()
 
     def on_body(self, body: bytes):
         if self._on_chunk:
-            self.eventloop.create_task(self._on_chunk(body))
+            self._on_chunk(body)
         else:
             self.body += body
 
@@ -107,14 +90,17 @@ class EpollHttpServer(HTTPServer):
     def __init__(self,
                  sock: socket.socket,
                  max_conns: int,
-                 callback: Coroutine,
-                 sfs: SFS):
-        self.on_message_complete = callback
+                 on_message_complete: Coroutine,
+                 sfs: SFS,
+                 write_logs: bool = True):
+        self.on_message_complete = on_message_complete
         self.sock: Connection = sock
         self.max_conns: int = max_conns
         self.epoll: Union[epoll, None] = None
         self._conns: Dict[int, Connection] = {}  # fileno: conn
         self.sfs = sfs
+
+        logger.disabled = not write_logs
 
         # every client has only one entity of parser and protocol
         # on each request, entities are just re-initializing
@@ -123,7 +109,7 @@ class EpollHttpServer(HTTPServer):
 
         self.eventloop = asyncio.new_event_loop()
 
-    def _receive_handler(self, conn: socket.socket):
+    async def _receive_handler(self, conn: socket.socket):
         parser, protocol = self._requests_buff[conn]
 
         try:
@@ -132,27 +118,25 @@ class EpollHttpServer(HTTPServer):
             logger.error(f'an error occurred in callback: {exc}')
             logger.exception(f'full error trace:\n{format_exc()}')
 
-            return self._call_handler(self._disconnect_handler,
-                                      self._conns.pop(conn.fileno()))
+            return await self._call_handler(self._disconnect_handler,
+                                            self._conns.pop(conn.fileno()))
         except HttpParserError as exc:
             # if some error occurred, relationship won't be good in future
             logger.error(f'disconnected user due to parsing request error: {exc}')
 
-            return self._call_handler(self._disconnect_handler,
-                                      self._conns.pop(conn.fileno()))
+            return await self._call_handler(self._disconnect_handler,
+                                            self._conns.pop(conn.fileno()))
 
         if protocol.received:
             protocol.request_obj.wipe()
             protocol.__init__(
                 conn,
-                self.eventloop,
                 protocol.request_obj,
-                self.on_message_complete
             )
             parser.__init__(protocol)
             self._requests_buff[conn] = (parser, protocol)
 
-    def _response_handler(self, conn):
+    async def _response_handler(self, conn):
         current_bytestring = self._responses_buff[conn]
         bytestring_left = current_bytestring[conn.send(current_bytestring):]
         self._responses_buff[conn] = bytestring_left
@@ -160,29 +144,27 @@ class EpollHttpServer(HTTPServer):
         if not bytestring_left:
             self.epoll.modify(conn, EPOLLIN)
 
-    def _connect_handler(self, conn):
+    async def _connect_handler(self, conn):
         # creating cell for conn once to avoid if-conditions in _receive_handler and
         # _response_handler every time receiving new event on socket read/write
-        protocol_instance = Protocol(conn,
-                                     self.eventloop,
-                                     Request(
-                                         self.send, self.sfs
-                                     ),
-                                     self.on_message_complete)
+        protocol_instance = Protocol(
+            conn,
+            Request(self.send, self.sfs),
+        )
         new_parser = HttpRequestParser(protocol_instance)
         protocol_instance.parser = new_parser
         self._requests_buff[conn] = (new_parser, protocol_instance)
         self._responses_buff[conn] = b''
 
-    def _disconnect_handler(self, conn):
+    async def _disconnect_handler(self, conn):
         self._requests_buff.pop(conn)
         self._responses_buff.pop(conn)
         conn.close()
 
     @staticmethod
-    def _call_handler(handler, conn):
+    async def _call_handler(handler, conn):
         try:
-            handler(conn)
+            await handler(conn)
         except Exception as exc:
             raise exceptions.WebServerError(format_exc())
 
@@ -197,24 +179,9 @@ class EpollHttpServer(HTTPServer):
 
         self._responses_buff[conn] += data[sent:]
 
-    def execute_callback(self,
-                         callback: Coroutine,
-                         request: Request
-                         ):
-        self.eventloop.create_task(
-            callback(request)
-        )
-
-    def poll(self):
+    async def poll(self):
         if self.on_message_complete is None:
             raise RuntimeError('no callback on message complete provided')
-
-        evloop_thread = Thread(
-            name='Event-Loop Thread',
-            target=self.eventloop.run_forever
-        )
-        evloop_thread.start()
-        logger.info('event-loop thread has been started')
 
         self.sock.listen(self.max_conns)
         polling = epoll()
@@ -235,9 +202,10 @@ class EpollHttpServer(HTTPServer):
 
         while True:
             for fileno, event in poll(1):
+
                 if fileno == serversock_fileno:
                     conn, addr = accept()
-                    call_handler(connect, conn)
+                    await call_handler(connect, conn)
                     conn.setblocking(False)
                     polling.register(conn, EPOLLIN)
                     conns[conn.fileno()] = conn
@@ -247,16 +215,16 @@ class EpollHttpServer(HTTPServer):
                     try:
                         peek_byte = conn.recv(1, MSG_PEEK)
                     except ConnectionResetError:
-                        call_handler(disconnect, conns.pop(fileno))
+                        await call_handler(disconnect, conns.pop(fileno))
                         continue
 
                     if not peek_byte:
-                        call_handler(disconnect, conns.pop(fileno))
+                        await call_handler(disconnect, conns.pop(fileno))
                         continue
 
-                    call_handler(receive, conn)
+                    await call_handler(receive, conn)
                 elif event & EPOLLOUT:
-                    call_handler(response, conns[fileno])
+                    await call_handler(response, conns[fileno])
                 else:
                     raise NotImplementedError(f'unknown epoll event: {event}')
 
@@ -267,6 +235,7 @@ class EpollHttpServer(HTTPServer):
         self.epoll.close()
         self._responses_buff.clear()
         self._requests_buff.clear()
+        self.eventloop.stop()
 
     def __del__(self):
         self.stop()
