@@ -96,7 +96,7 @@ def generate_chunked_data(fd: BinaryIO, chunk_length: int = 4096):
         yield b'%s%s\r\n' % (chunk_length_in_hex, chunk)
 
 
-def parse_params(params: bytes) -> Dict[str, List]:
+def parse_params(params: bytes) -> Dict[str, List[str]]:
     """
     Returns dict with params (empty if no params given)
     """
@@ -104,7 +104,7 @@ def parse_params(params: bytes) -> Dict[str, List]:
     pairs: Dict[str, List] = {}
 
     for attr in params.split(b'&' if b'&' in params else b';'):
-        key, value = attr.decode().split('=')
+        key, value = attr.decode().split('=', 1)
 
         if key not in pairs:
             pairs[key] = [value]
