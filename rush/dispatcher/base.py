@@ -1,6 +1,6 @@
 import abc
 
-from entities import Request
+from ..entities import Request
 
 
 class Dispatcher(abc.ABC):
