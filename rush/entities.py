@@ -1,16 +1,11 @@
 import asyncio
-import logging
 from asyncio import Future
-from dataclasses import dataclass
-from typing import Union, Any, Dict, List, Callable, Awaitable, Type
+from typing import Union, Any, Dict, List, Callable, Awaitable, Optional
 
-from . import sfs, server
+from . import sfs
 from .utils.status_codes import status_codes
-from .server.httpserver import EpollHttpServer
 from .utils.httputils import render_http_response, parse_params
-from .typehints import (HttpResponseCallback, URI, HTTPMethod,
-                        HTTPVersion, Connection, URIParameters,
-                        URIFragment)
+from .typehints import (HttpResponseCallback, Connection)
 
 
 def make_async(func: Callable) -> Callable[[Any], Awaitable]:
@@ -32,24 +27,6 @@ def make_sure_async(func: Union[Callable[[Any], Callable],
         else make_async(func)
 
 
-@dataclass
-class Settings:
-    host: str = '0.0.0.0'
-    port: int = 9090
-    max_bind_retries: Union[int, None] = None
-    bind_retries_timeout: Union[int, float] = 3
-    max_connections: Union[int, None] = None
-    processes: Union[int, None] = None
-
-    logging_level: int = logging.DEBUG
-    logging_format = '[%(asctime)s] [%(levelname)s] %(name)s: %(message)s'
-    logs_dir = 'logs'
-    logs_file = 'webserver.log'
-
-    sfs: Type[sfs.base.SFS] = sfs.fd_sendfile.SimpleDevSFS
-    httpserver = EpollHttpServer
-
-
 class Request:
     def __init__(self,
                  http_callback: HttpResponseCallback,
@@ -60,39 +37,25 @@ class Request:
         # not using Union cause every object's fields after initializing
         # ALWAYS will be refilled, but also I'd like to have proper
         # typehints
-        self.method: HTTPMethod = b''
-        self.path: URI = b''
-        self.fragment: URIFragment = b''
-        self.raw_parameters: URIParameters = b''
-        self._parsed_parameters: Union[Dict[bytes, List[bytes]], None] = None
-        self.protocol: HTTPVersion = ''
+        self._method: Future = Future()
+        self._awaited_method: Optional[bytes] = None
+        self._path: Future = Future()
+        self._awaited_path: Optional[bytes] = None
+        self._fragment: Future = Future()
+        self._awaited_fragment: Optional[bytes] = None
+        self._raw_parameters: Future = Future()
+        self._awaited_raw_parameters: Optional[bytes] = None
+        self._parsed_parameters: Optional[Dict[str, List[str]]] = None
+        self._protocol: Future = Future()
+        self._awaited_protocol: Optional[bytes] = None
 
-        self._headers_future: Union[Future, None] = None
-        self._headers: Union[CaseInsensitiveDict, None] = None
-        self._body_future: Union[Future, None] = None
-        self._body: bytes = b''
+        self._headers: CaseInsensitiveDict = CaseInsensitiveDict()
+        self._body: Future = Future()
+        self._awaited_body: Optional[bytes] = None
 
-        self.socket: Union[Connection, None] = None
-        self._on_chunk: Union[Callable, None] = None
-        self._on_complete: Union[Callable, None] = None
-
-    def reinit(self,
-               method: HTTPMethod,
-               path: URI,
-               parameters: URIParameters,
-               fragment: URIFragment,
-               protocol: HTTPVersion,
-               socket: Connection):
-        self.method = method.upper()
-        self.path = path
-        self.raw_parameters = parameters
-        self.fragment = fragment
-        self.protocol = protocol
-        self._headers_future.__init__()
-        self._headers = None
-        self._body_future.__init__()
-        self._body = None
-        self.socket = socket
+        self.socket: Optional[Connection] = None
+        self._on_chunk: Optional[Callable] = None
+        self._on_complete: Optional[Callable] = None
 
     def wipe(self):
         """
@@ -103,31 +66,20 @@ class Request:
         bytes length, not a lot, but also can be a trouble
         """
 
-        self._body = b''
-        self._headers = None
-        self.path = b''
-
-    def set_headers(self, headers: 'CaseInsensitiveDict') -> None:
-        self._headers_future.set_result(headers)
-
-    def set_body(self, body: bytes) -> None:
-        self._body_future.set_result(body)
-
-    async def headers(self) -> 'CaseInsensitiveDict':
-        if self._headers:
-            return self._headers
-
-        self._headers = await self._headers_future.result()
-
-        return self._headers
-
-    async def body(self) -> bytes:
-        if self._body:
-            return self._body
-
-        self._body = await self._body_future.result()
-
-        return self._body
+        self._method.__init__()
+        self._awaited_method = None
+        self._path.__init__()
+        self._awaited_path = None
+        self._fragment.__init__()
+        self._awaited_fragment = None
+        self._raw_parameters.__init__()
+        self._awaited_raw_parameters = None
+        self._parsed_parameters = None
+        self._protocol.__init__()
+        self._awaited_protocol = None
+        self._headers.clear()
+        self._body.__init__()
+        self._awaited_body = None
 
     def on_chunk(self, handler: Union[Callable[[bytes], Callable],
                                       Callable[[bytes], Awaitable]]) -> None:
@@ -138,10 +90,7 @@ class Request:
         in event loop
         """
 
-        self._on_chunk = make_sure_async(handler)
-
-    def get_on_chunk(self) -> Callable[[bytes], Awaitable]:
-        return self._on_chunk
+        self._on_chunk = handler  # make_sure_async(handler)
 
     def on_complete(self, handler: Union[Callable[[bytes], Callable],
                                          Callable[[bytes], Awaitable]]) -> None:
@@ -149,27 +98,73 @@ class Request:
         Same as on_chunk
         """
 
-        self._on_complete = make_sure_async(handler)
+        self._on_complete = handler  # make_sure_async(handler)
+
+    def get_on_chunk(self) -> Callable[[bytes], Awaitable]:
+        return self._on_chunk
 
     def get_on_complete(self) -> Callable[[], Awaitable]:
         return self._on_complete
+
+    async def method(self):
+        if self._awaited_method:
+            return self._awaited_method
+
+        return await self._method.result()
+
+    async def protocol(self):
+        if self._awaited_protocol:
+            return self._awaited_protocol
+
+        return await self._protocol.result()
+
+    async def path(self):
+        if self._awaited_path:
+            return self._awaited_path
+
+        return await self._path.result()
+
+    def headers(self):
+        return self._headers
+
+    async def body(self):
+        if self._awaited_body:
+            return self._awaited_body
+
+        return await self._body.result()
+
+    def set_method(self, method: bytes):
+        self._method.set_result(method)
+
+    def set_protocol(self, protocol: str):
+        self._protocol.set_result(protocol)
+
+    def set_path(self, path: bytes):
+        self._path.set_result(path)
+
+    def set_header(self, header: str, value: str) -> None:
+        self._headers[header] = value
+
+    def set_body(self, body: bytes):
+        self._body.set_result(body)
 
     async def response(self,
                        code: int = 200,
                        status: Union[str, bytes, None] = None,
                        body: Union[str, bytes] = b'',
-                       headers: Union[dict, 'CaseInsensitiveDict', None] = None) -> None:
+                       headers: Union[dict, 'CaseInsensitiveDict', None] = None
+                       ) -> None:
         self.http_callback(
             render_http_response(
-                self.protocol,
+                await self.protocol(),
                 code,
                 status or status_codes[code],
-                await self.headers() if not headers else (await self.headers()).update(headers),
+                self.headers if not headers else {**self.headers, **headers},
                 body
             )
         )
 
-    def params(self) -> Dict[bytes, List[bytes]]:
+    async def params(self) -> Dict[str, List[str]]:
         """
         Returns a dict with URI parameters, where keys are bytes
         and values are lists with bytes. This may be not convenient
@@ -182,11 +177,17 @@ class Request:
         If no parameters provided, empty dictionary will be returned
         """
 
-        if not self.raw_parameters:
+        if self._parsed_parameters:
+            return self._parsed_parameters
+
+        raw_params = self._awaited_raw_parameters \
+            if self._awaited_raw_parameters \
+            else await self._raw_parameters
+
+        if not raw_params:
             return {}
 
-        if self._parsed_parameters is None:
-            self._parsed_parameters = parse_params(self.raw_parameters)
+        self._parsed_parameters = parse_params(raw_params)
 
         return self._parsed_parameters
 
