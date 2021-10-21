@@ -1,7 +1,7 @@
 from typing import Dict, Union
 
-from sfs.base import SFS
-from typehints import Path, Connection, HttpResponseCallback, FileDescriptor
+from .base import SFS
+from ..typehints import Path, Connection, HttpResponseCallback, FileDescriptor
 
 
 class SimpleDevSFS(SFS):
