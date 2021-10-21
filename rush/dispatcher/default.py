@@ -1,11 +1,12 @@
-from asyncio import iscoroutine
+from asyncio import iscoroutinefunction
 from typing import (Dict, Any, Callable, Awaitable, Union, Iterable)
 
-import exceptions
-from entities import Dispatcher, Request
-from utils.httpmethods import ALL_METHODS
-from typehints import RoutePath, Coroutine
-from utils.stringutils import make_sure_bytes_or_none
+from .. import exceptions
+from .base import Dispatcher
+from ..entities import Request
+from ..utils.httpmethods import ALL_METHODS
+from ..typehints import RoutePath, Coroutine
+from ..utils.stringutils import make_sure_bytes_or_none
 
 
 class Handler:
@@ -17,7 +18,7 @@ class Handler:
     def __init__(self,
                  handler: Callable[[Request], Awaitable],
                  path: RoutePath,
-                 methods: Iterable[Any[ALL_METHODS]],
+                 methods: Iterable[bytes],
                  any_path: bool
                  ):
         self.handler = handler
@@ -62,14 +63,14 @@ class SimpleAsyncDispatcher(Dispatcher):
             if handler is None:
                 raise exceptions.HTTPNotFound(request)
         else:
-            handler = self.usual_handlers[request.path]
+            handler = self.usual_handlers[await request.path()]
 
         await handler.handler(request)
 
     def route(self,
               path: RoutePath,
               method: Union[str, bytes, None] = None,
-              methods: Union[Iterable[Any[ALL_METHODS]]] = ALL_METHODS
+              methods: Iterable[bytes] = ALL_METHODS
               ):
 
         if method is not None:
@@ -79,7 +80,7 @@ class SimpleAsyncDispatcher(Dispatcher):
             if not methods:
                 raise exceptions.NoMethodsProvided(str(coro))
 
-            if not iscoroutine(coro):
+            if not iscoroutinefunction(coro):
                 raise exceptions.HandlerMustBeCoroutineError(str(coro))
 
             self._put_handler(Handler(
