@@ -142,6 +142,12 @@ class Request:
     def set_path(self, path: bytes):
         self._path.set_result(path)
 
+    def set_params(self, params: bytes):
+        self._raw_parameters.set_result(params)
+
+    def set_fragment(self, fragment: bytes):
+        self._fragment.set_result(fragment)
+
     def set_header(self, header: str, value: str) -> None:
         self._headers[header] = value
 
