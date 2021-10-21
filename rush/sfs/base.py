@@ -7,7 +7,7 @@ as for anything else, including local server's filesystem watching
 import abc
 from typing import Union, Dict
 
-from typehints import Path, Connection, HttpResponseCallback
+from ..typehints import Path, Connection, HttpResponseCallback
 
 
 class SFS(abc.ABC):
