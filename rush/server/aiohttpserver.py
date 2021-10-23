@@ -11,7 +11,7 @@ from . import base
 from ..sfs.base import SFS
 from ..entities import Request
 from ..typehints import Coroutine
-from .httpserver import Protocol as LLHttpProtocol
+from ..parser.httptools_protocol import Protocol as LLHttpProtocol
 
 uvloop.install()
 
