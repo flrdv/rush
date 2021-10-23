@@ -11,8 +11,9 @@ from .utils import sockutils
 from .typehints import Coroutine
 from .sfs import base as sfs_base, fd_sendfile as sfs_fd_sendfile
 from . import entities, exceptions
+from .server.base import HTTPServer
 from .dispatcher.base import Dispatcher
-from .server.httpserver import EpollHttpServer
+from .server.aiohttpserver import AioHTTPServer
 
 asyncio_logger = logging.getLogger('asyncio')
 asyncio_logger.disabled = True
@@ -33,7 +34,7 @@ class Settings:
     logs_file = 'webserver.log'
 
     sfs: Type[sfs_base.SFS] = sfs_fd_sendfile.SimpleDevSFS
-    httpserver = EpollHttpServer
+    httpserver: Type[HTTPServer] = AioHTTPServer
 
 
 class WebServer:
