@@ -88,18 +88,18 @@ class WebServer:
 
         self.logger.debug(f'forking {self.settings.processes} times')
 
-        for child_num in range(self.settings.processes - 1):
-            child_process = multiprocessing.Process(
-                name=f'Rush-webserver child process #{child_num}',
-                target=self._server_worker,
-                args=(dp,)
-            )
-            self.children.append(child_process)
-            child_process.start()
-            self.logger.debug(f'started child process id={child_num} pid={child_process.pid}')
+        if __name__ == '__main__':
+            for child_num in range(self.settings.processes - 1):
+                child_process = multiprocessing.Process(
+                    name=f'Rush-webserver child process #{child_num}',
+                    target=self._server_worker,
+                    args=(dp,)
+                )
+                self.children.append(child_process)
+                child_process.start()
+                self.logger.debug(f'started child process id={child_num} pid={child_process.pid}')
 
         self.logger.info('children has been spawned')
-        self.logger.info('press ctrl+c/ctrl+shift+c to exit the server')
         self._server_worker(dp)
 
     def _server_worker(self, dp: Dispatcher):
@@ -138,6 +138,7 @@ class WebServer:
             raise SystemExit(1)
 
         self.logger.info(f'successfully bound socket on {self.settings.host}:{self.settings.port}')
+        self.logger.info('press CTRL-C to stop the server')
 
         http_server = self.settings.httpserver(
             sock,
