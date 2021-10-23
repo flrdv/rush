@@ -66,7 +66,7 @@ class SimpleAsyncDispatcher(Dispatcher):
             handler = self.usual_handlers[await request.path()]
 
         await handler.handler(request)
-        request.wipe()
+        await request.wipe()
 
     def route(self,
               path: RoutePath,
