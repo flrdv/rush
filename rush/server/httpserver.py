@@ -3,7 +3,7 @@ import asyncio
 import logging
 from socket import MSG_PEEK
 from traceback import format_exc
-from typing import Union, Dict, Tuple, Callable, Awaitable, Any
+from typing import Union, Dict, Tuple
 from select import epoll, EPOLLIN, EPOLLOUT
 
 from httptools import HttpRequestParser
@@ -13,7 +13,7 @@ from rush import exceptions
 from .base import HTTPServer
 from rush.sfs.base import SFS
 from rush.utils.httputils import decode_url
-from rush.entities import CaseInsensitiveDict, Request
+from rush.entities import Request
 from rush.typehints import Connection, Coroutine, Nothing
 
 logger = logging.getLogger(__name__)
@@ -24,10 +24,8 @@ RECV_BLOCK_SIZE = 16384  # how many bytes are receiving per 1 socket read
 
 class Protocol:
     def __init__(self,
-                 conn: socket.socket,
                  request_obj: Request,
                  ):
-        self.conn = conn
         self.request_obj = request_obj
 
         self.body = b''
@@ -54,6 +52,7 @@ class Protocol:
         elif b'#' in url:
             url, fragment = url.split(b'#', 1)
 
+        self.request_obj.set_protocol(self.parser.get_http_version())
         self.request_obj.set_path(url)
         self.request_obj.set_params(parameters)
         self.request_obj.set_fragment(fragment)
@@ -107,8 +106,6 @@ class EpollHttpServer(HTTPServer):
         self._requests_buff: Dict[Connection, Tuple[HttpRequestParser, Protocol]] = {}
         self._responses_buff: Dict[Connection, bytes] = {}  # conn: b'...'
 
-        self.eventloop = asyncio.new_event_loop()
-
     async def _receive_handler(self, conn: socket.socket):
         parser, protocol = self._requests_buff[conn]
 
@@ -128,9 +125,7 @@ class EpollHttpServer(HTTPServer):
                                             self._conns.pop(conn.fileno()))
 
         if protocol.received:
-            protocol.request_obj.wipe()
             protocol.__init__(
-                conn,
                 protocol.request_obj,
             )
             parser.__init__(protocol)
@@ -148,7 +143,6 @@ class EpollHttpServer(HTTPServer):
         # creating cell for conn once to avoid if-conditions in _receive_handler and
         # _response_handler every time receiving new event on socket read/write
         protocol_instance = Protocol(
-            conn,
             Request(self.send, self.sfs),
         )
         new_parser = HttpRequestParser(protocol_instance)
@@ -235,7 +229,6 @@ class EpollHttpServer(HTTPServer):
         self.epoll.close()
         self._responses_buff.clear()
         self._requests_buff.clear()
-        self.eventloop.stop()
 
     def __del__(self):
         self.stop()
