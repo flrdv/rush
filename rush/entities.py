@@ -81,6 +81,9 @@ class Request:
         self._body.__init__()
         self._awaited_body = None
 
+        self._on_chunk = None
+        self._on_complete = None
+
     def on_chunk(self, handler: Union[Callable[[bytes], Callable],
                                       Callable[[bytes], Awaitable]]) -> None:
         """
@@ -107,31 +110,31 @@ class Request:
         return self._on_complete
 
     async def method(self):
-        if self._awaited_method:
-            return self._awaited_method
+        if not self._awaited_method:
+            self._awaited_method = await self._method
 
-        return await self._method.result()
+        return self._awaited_method
 
     async def protocol(self):
-        if self._awaited_protocol:
-            return self._awaited_protocol
+        if not self._awaited_protocol:
+            self._awaited_protocol = await self._protocol
 
-        return await self._protocol.result()
+        return self._awaited_protocol
 
     async def path(self):
-        if self._awaited_path:
-            return self._awaited_path
+        if not self._awaited_path:
+            self._awaited_path = await self._path
 
-        return await self._path.result()
+        return self._awaited_path
 
     def headers(self):
         return self._headers
 
     async def body(self):
-        if self._awaited_body:
-            return self._awaited_body
+        if not self._awaited_body:
+            self._awaited_body = await self._body
 
-        return await self._body.result()
+        return self._awaited_body
 
     def set_method(self, method: bytes):
         self._method.set_result(method)
@@ -154,6 +157,9 @@ class Request:
     def set_body(self, body: bytes):
         self._body.set_result(body)
 
+    def set_http_callback(self, callback: Callable[[bytes], Callable]):
+        self.http_callback = callback
+
     async def response(self,
                        code: int = 200,
                        status: Union[str, bytes, None] = None,
@@ -165,10 +171,15 @@ class Request:
                 await self.protocol(),
                 code,
                 status or status_codes[code],
-                self.headers if not headers else {**self.headers, **headers},
+                self._headers if not headers else {**self._headers, **headers},
                 body
             )
         )
+
+    def raw_response(self,
+                     data: bytes
+                     ) -> None:
+        self.http_callback(data)
 
     async def params(self) -> Dict[str, List[str]]:
         """
@@ -196,36 +207,6 @@ class Request:
         self._parsed_parameters = parse_params(raw_params)
 
         return self._parsed_parameters
-
-
-class ObjectPool:
-    def __init__(self,
-                 object_entity,
-                 pool_size: int = 1000,
-                 object_initializer: Union[Callable, None] = None):
-        self.object = object_entity
-        self.size = pool_size
-        self.initializer = object_initializer
-
-        self.pool: list = []
-
-    def new_object(self) -> object:
-        if self.initializer:
-            return self.initializer(self.object)
-
-        return self.object()
-
-    def pop(self) -> object:
-        if not self.pool:
-            return self.new_object()
-
-        return self.pool.pop()
-
-    def push(self, obj) -> None:
-        if len(self.pool) >= self.size:
-            return
-
-        self.pool.append(obj)
 
 
 class CaseInsensitiveDict(dict):
