@@ -57,7 +57,7 @@ class SimpleAsyncDispatcher(Dispatcher):
     async def process_request(self,
                               request: Request
                               ) -> None:
-        if request.path not in self.usual_handlers:
+        if await request.path() not in self.usual_handlers:
             handler = self.any_paths_handlers[request.method]
 
             if handler is None:
@@ -66,6 +66,7 @@ class SimpleAsyncDispatcher(Dispatcher):
             handler = self.usual_handlers[await request.path()]
 
         await handler.handler(request)
+        request.wipe()
 
     def route(self,
               path: RoutePath,
