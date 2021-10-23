@@ -49,7 +49,8 @@ class Request:
         self._protocol: Future = Future()
         self._awaited_protocol: Optional[bytes] = None
 
-        self._headers: CaseInsensitiveDict = CaseInsensitiveDict()
+        self._headers: Future = Future()
+        self._awaited_headers: Optional[CaseInsensitiveDict] = None
         self._body: Future = Future()
         self._awaited_body: Optional[bytes] = None
 
@@ -77,7 +78,8 @@ class Request:
         self._parsed_parameters = None
         self._protocol.__init__()
         self._awaited_protocol = None
-        self._headers.clear()
+        self._headers.__init__()
+        self._awaited_headers = None
         self._body.__init__()
         self._awaited_body = None
 
@@ -109,28 +111,31 @@ class Request:
     def get_on_complete(self) -> Callable[[], Awaitable]:
         return self._on_complete
 
-    async def method(self):
+    async def method(self) -> bytes:
         if not self._awaited_method:
             self._awaited_method = await self._method
 
         return self._awaited_method
 
-    async def protocol(self):
+    async def protocol(self) -> str:
         if not self._awaited_protocol:
             self._awaited_protocol = await self._protocol
 
         return self._awaited_protocol
 
-    async def path(self):
+    async def path(self) -> bytes:
         if not self._awaited_path:
             self._awaited_path = await self._path
 
         return self._awaited_path
 
-    def headers(self):
-        return self._headers
+    async def headers(self) -> 'CaseInsensitiveDict':
+        if not self._awaited_headers:
+            self._awaited_headers = await self._headers
 
-    async def body(self):
+        return self._awaited_headers
+
+    async def body(self) -> bytes:
         if not self._awaited_body:
             self._awaited_body = await self._body
 
@@ -151,8 +156,8 @@ class Request:
     def set_fragment(self, fragment: bytes):
         self._fragment.set_result(fragment)
 
-    def set_header(self, header: str, value: str) -> None:
-        self._headers[header] = value
+    def set_headers(self, headers: 'CaseInsensitiveDict'):
+        self._headers.set_result(headers)
 
     def set_body(self, body: bytes):
         self._body.set_result(body)
@@ -171,7 +176,7 @@ class Request:
                 await self.protocol(),
                 code,
                 status or status_codes[code],
-                self._headers if not headers else {**self._headers, **headers},
+                self.headers if not headers else {**self.headers, **headers},
                 body
             )
         )
@@ -238,3 +243,9 @@ class CaseInsensitiveDict(dict):
 
     def setdefault(self, key: Union[str, bytes], default: Any = None) -> Any:
         return self.__parent.setdefault(key.lower(), default)
+
+    def update(self, other, **kwargs):
+        self.__parent.update(
+            {key.lower(): value for key, value in other.items()},
+            **kwargs
+        )
