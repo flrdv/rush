@@ -2,12 +2,15 @@ from typing import Union
 
 from httptools import HttpRequestParser
 
-from rush.utils.httputils import decode_url
-from rush.entities import Request
-from rush.typehints import Coroutine, Nothing
+from ..entities import Request
+from ..utils.httputils import decode_url
+from ..typehints import Coroutine, Nothing
+from ..entities import CaseInsensitiveDict
 
 
 class Protocol:
+    headers = CaseInsensitiveDict()
+
     def __init__(self,
                  request_obj: Request,
                  ):
@@ -23,6 +26,8 @@ class Protocol:
 
         self.parser: Union[HttpRequestParser, None] = None
 
+        self.on_header = self.headers.__setitem__
+
     def on_url(self, url: bytes):
         if b'%' in url:
             url = decode_url(url)
@@ -37,19 +42,16 @@ class Protocol:
         elif b'#' in url:
             url, fragment = url.split(b'#', 1)
 
-        self.request_obj.set_protocol(self.parser.get_http_version())
         self.request_obj.set_path(url)
         self.request_obj.set_params(parameters)
         self.request_obj.set_fragment(fragment)
 
-    def on_header(self, name: bytes, value: bytes):
-        self.request_obj.set_header(name.decode(), value.decode())
-
     def on_headers_complete(self):
-        request_headers = self.request_obj.headers()
+        self.request_obj.set_protocol(self.parser.get_http_version())
+        self.request_obj.set_headers(self.headers)
 
-        if request_headers.get('transfer-encoding') == 'chunked' or \
-                request_headers.get('content-type', '').startswith('multipart/'):
+        if self.headers.get(b'transfer-encoding') == b'chunked' or \
+                self.headers.get(b'content-type', b'').startswith(b'multipart/'):
             self.file = True
             self._on_chunk, self._on_complete = \
                 self.request_obj.get_on_chunk(), self.request_obj.get_on_complete()
