@@ -58,7 +58,7 @@ class Request:
         self._on_chunk: Optional[Callable] = None
         self._on_complete: Optional[Callable] = None
 
-    def wipe(self):
+    async def wipe(self):
         """
         A method that clears path, body and headers attributes
         The purpose of this function is not to let already processed
@@ -78,6 +78,8 @@ class Request:
         self._parsed_parameters = None
         self._protocol.__init__()
         self._awaited_protocol = None
+
+        (await self.headers()).clear()
         self._headers.__init__()
         self._awaited_headers = None
         self._body.__init__()
@@ -176,7 +178,11 @@ class Request:
                 await self.protocol(),
                 code,
                 status or status_codes[code],
-                self.headers if not headers else {**self.headers, **headers},
+
+                await self.headers()
+                if not headers
+                else {**(await self.headers()), **headers},
+
                 body
             )
         )
