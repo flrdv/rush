@@ -67,6 +67,9 @@ class Protocol:
         self.request_obj.set_body(self.body)
 
     def on_message_complete(self):
+        if not self.body:
+            self.request_obj.set_body(b'')
+
         self.received = True
 
         if self._on_complete:
