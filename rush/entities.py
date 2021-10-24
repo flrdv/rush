@@ -67,22 +67,30 @@ class Request:
         bytes length, not a lot, but also can be a trouble
         """
 
-        self._method.__init__()
+        """
+        So much noqa's only because pycharm is sometimes really strange
+        he thought that if function is async, all the futures' methods
+        are also coroutines and I need to await them. IDK why this happened,
+        but some really strange shit. I thought it's better just to ignore
+        them with noqa (I'm a perfectionist and can't stand yellow in code) 
+        """
+
+        self._method.__init__()          # noqa
         self._awaited_method = None
-        self._path.__init__()
+        self._path.__init__()            # noqa
         self._awaited_path = None
-        self._fragment.__init__()
+        self._fragment.__init__()        # noqa
         self._awaited_fragment = None
-        self._raw_parameters.__init__()
+        self._raw_parameters.__init__()  # noqa
         self._awaited_raw_parameters = None
         self._parsed_parameters = None
-        self._protocol.__init__()
+        self._protocol.__init__()        # noqa
         self._awaited_protocol = None
 
         (await self.headers()).clear()
-        self._headers.__init__()
+        self._headers.__init__()         # noqa
         self._awaited_headers = None
-        self._body.__init__()
+        self._body.__init__()            # noqa
         self._awaited_body = None
 
         self._on_chunk = None
@@ -178,11 +186,7 @@ class Request:
                 await self.protocol(),
                 code,
                 status or status_codes[code],
-
-                await self.headers()
-                if not headers
-                else {**(await self.headers()), **headers},
-
+                headers,
                 body
             )
         )
