@@ -40,16 +40,19 @@ class Protocol:
         elif b'#' in url:
             url, fragment = url.split(b'#', 1)
 
-        self.request_obj.set_path(url)
-        self.request_obj.set_params(parameters)
-        self.request_obj.set_fragment(fragment)
+        self.request_obj.path = url
+        self.request_obj.raw_parameters = parameters
+        self.request_obj.fragment = fragment
+        self.request_obj.method = self.parser.get_method()
+
+        # print('filled path, params and fragment')
 
     def on_header(self, header: bytes, value: bytes):
         self.headers[header.decode()] = value.decode()
 
     def on_headers_complete(self):
-        self.request_obj.set_protocol(self.parser.get_http_version())
-        self.request_obj.set_headers(self.headers)
+        self.request_obj.protocol = self.parser.get_http_version()
+        self.request_obj.headers = self.headers
 
         if self.headers.get(b'transfer-encoding') == b'chunked' or \
                 self.headers.get(b'content-type', b'').startswith(b'multipart/'):
@@ -61,15 +64,9 @@ class Protocol:
         if self._on_chunk:
             self._on_chunk(body)
         else:
-            self.body += body
-
-    def on_body_complete(self):
-        self.request_obj.set_body(self.body)
+            self.request_obj.body += body
 
     def on_message_complete(self):
-        if not self.body:
-            self.request_obj.set_body(b'')
-
         self.received = True
 
         if self._on_complete:
