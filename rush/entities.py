@@ -1,5 +1,4 @@
 import asyncio
-from asyncio import Future
 from typing import Union, Any, Dict, List, Callable, Awaitable, Optional
 
 from . import sfs
@@ -37,22 +36,14 @@ class Request:
         # not using Union cause every object's fields after initializing
         # ALWAYS will be refilled, but also I'd like to have proper
         # typehints
-        self._method: Future = Future()
-        self._awaited_method: Optional[bytes] = None
-        self._path: Future = Future()
-        self._awaited_path: Optional[bytes] = None
-        self._fragment: Future = Future()
-        self._awaited_fragment: Optional[bytes] = None
-        self._raw_parameters: Future = Future()
-        self._awaited_raw_parameters: Optional[bytes] = None
-        self._parsed_parameters: Optional[Dict[str, List[str]]] = None
-        self._protocol: Future = Future()
-        self._awaited_protocol: Optional[bytes] = None
-
-        self._headers: Future = Future()
-        self._awaited_headers: Optional[CaseInsensitiveDict] = None
-        self._body: Future = Future()
-        self._awaited_body: Optional[bytes] = None
+        self.method: Optional[bytes] = None
+        self.path: Optional[bytes] = None
+        self.fragment: Optional[bytes] = None
+        self.raw_parameters: Optional[bytes] = None
+        self.parsed_parameters: Optional[Dict[str, List[str]]] = None
+        self.protocol: Optional[str] = None
+        self.headers = None
+        self.body: bytes = b''
 
         self.socket: Optional[Connection] = None
         self._on_chunk: Optional[Callable] = None
@@ -75,23 +66,14 @@ class Request:
         them with noqa (I'm a perfectionist and can't stand yellow in code) 
         """
 
-        self._method.__init__()          # noqa
-        self._awaited_method = None
-        self._path.__init__()            # noqa
-        self._awaited_path = None
-        self._fragment.__init__()        # noqa
-        self._awaited_fragment = None
-        self._raw_parameters.__init__()  # noqa
-        self._awaited_raw_parameters = None
-        self._parsed_parameters = None
-        self._protocol.__init__()        # noqa
-        self._awaited_protocol = None
+        # print('wiping')
 
-        (await self.headers()).clear()
-        self._headers.__init__()         # noqa
-        self._awaited_headers = None
-        self._body.__init__()            # noqa
-        self._awaited_body = None
+        self.path = None
+        self.fragment = None
+        self.raw_parameters = None
+        self.parsed_parameters: Optional[Dict[str, List[str]]] = None
+        self.headers.clear()
+        self.body = b''
 
         self._on_chunk = None
         self._on_complete = None
@@ -121,63 +103,6 @@ class Request:
     def get_on_complete(self) -> Callable[[], Awaitable]:
         return self._on_complete
 
-    async def method(self) -> bytes:
-        if not self._awaited_method:
-            self._awaited_method = await self._method
-
-        return self._awaited_method
-
-    async def protocol(self) -> str:
-        if not self._awaited_protocol:
-            self._awaited_protocol = await self._protocol
-
-        return self._awaited_protocol
-
-    async def path(self) -> bytes:
-        if not self._awaited_path:
-            self._awaited_path = await self._path
-
-        return self._awaited_path
-
-    async def headers(self) -> 'CaseInsensitiveDict':
-        if not self._awaited_headers:
-            self._awaited_headers = await self._headers
-
-        return self._awaited_headers
-
-    async def fragment(self) -> bytes:
-        if not self._awaited_fragment:
-            self._awaited_fragment = await self._fragment
-
-        return self._awaited_fragment
-
-    async def body(self) -> bytes:
-        if not self._awaited_body:
-            self._awaited_body = await self._body
-
-        return self._awaited_body
-
-    def set_method(self, method: bytes):
-        self._method.set_result(method)
-
-    def set_protocol(self, protocol: str):
-        self._protocol.set_result(protocol)
-
-    def set_path(self, path: bytes):
-        self._path.set_result(path)
-
-    def set_params(self, params: bytes):
-        self._raw_parameters.set_result(params)
-
-    def set_fragment(self, fragment: bytes):
-        self._fragment.set_result(fragment)
-
-    def set_headers(self, headers: 'CaseInsensitiveDict'):
-        self._headers.set_result(headers)
-
-    def set_body(self, body: bytes):
-        self._body.set_result(body)
-
     def set_http_callback(self, callback: Callable[[bytes], Callable]):
         self.http_callback = callback
 
@@ -189,7 +114,7 @@ class Request:
                        ) -> None:
         self.http_callback(
             render_http_response(
-                await self.protocol(),
+                self.protocol,
                 code,
                 status or status_codes[code],
                 headers,
@@ -215,19 +140,10 @@ class Request:
         If no parameters provided, empty dictionary will be returned
         """
 
-        if self._parsed_parameters:
-            return self._parsed_parameters
+        if not self.parsed_parameters:
+            self.parsed_parameters = parse_params(self.raw_parameters)
 
-        raw_params = self._awaited_raw_parameters \
-            if self._awaited_raw_parameters \
-            else await self._raw_parameters
-
-        if not raw_params:
-            return {}
-
-        self._parsed_parameters = parse_params(raw_params)
-
-        return self._parsed_parameters
+        return self.parsed_parameters
 
 
 class CaseInsensitiveDict(dict):
