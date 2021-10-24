@@ -39,7 +39,7 @@ class Route:
                  method_or_methods: Union[str, bytes, Iterable] = ALL_METHODS
                  ):
         self.handler = handler
-        self.path = path
+        self.path = path if isinstance(path, bytes) else path.encode()
 
         if not isinstance(method_or_methods, Iterable):
             method_or_methods = {method_or_methods}
@@ -58,7 +58,7 @@ class SimpleAsyncDispatcher(Dispatcher):
                               request: Request
                               ) -> None:
         if await request.path() not in self.usual_handlers:
-            handler = self.any_paths_handlers[request.method]
+            handler = self.any_paths_handlers[await request.method()]
 
             if handler is None:
                 raise exceptions.HTTPNotFound(request)
@@ -132,7 +132,7 @@ class SimpleAsyncDispatcher(Dispatcher):
             handler=route.handler,
             path=route.path,
             methods=route.methods,
-            any_path=route.path is None
+            any_path=not route.path
         ))
 
     def _put_handler(self, handler: Handler) -> None:
