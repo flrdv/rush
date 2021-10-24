@@ -58,16 +58,13 @@ class AsyncioServerProtocol(asyncio.Protocol):
         self.request_obj.set_http_callback(transport.write)
 
     def data_received(self, data: bytes) -> None:
-        if self.first_time:
-            asyncio.create_task(
-                self.on_message_complete(self.request_obj)
-            )
-            self.first_time = False
-
         self.parser.feed_data(data)
 
         if self.protocol.received:
-            self.first_time = True
+            asyncio.create_task(
+                self.on_message_complete(self.request_obj)
+            )
+            # print('re-initing all')
             self.protocol.__init__(
                 self.request_obj
             )
