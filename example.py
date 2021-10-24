@@ -13,8 +13,24 @@ async def deco_handler(request: entities.Request) -> None:
     )
 
 
+@dp.get('/awaiting-demo')
+async def awaiting_demo(request: entities.Request) -> None:
+    await request.method()
+    await request.path()
+    await request.protocol()
+    await request.params()
+    await request.fragment()
+    await request.headers()
+    await request.body()
+
+    await request.response(
+        code=200,
+        body=b'awaiting request methods has succeeded'
+    )
+
+
 async def aiohttp_like_handler(request: entities.Request) -> None:
-    if b'easter' in await request.headers():
+    if 'easter' in await request.headers():
         return await request.response(
             code=201,
             body=b'wow, you found an easter egg!'
