@@ -16,9 +16,6 @@ from .server.base import HTTPServer
 from .dispatcher.base import Dispatcher
 from .server.aiohttpserver import AioHTTPServer
 
-asyncio_logger = logging.getLogger('asyncio')
-asyncio_logger.disabled = True
-
 
 @dataclass
 class Settings:
@@ -36,6 +33,9 @@ class Settings:
 
     sfs: Type[sfs_base.SFS] = sfs_fd_sendfile.SimpleDevSFS
     httpserver: Type[HTTPServer] = AioHTTPServer
+
+    asyncio_logging: bool = True
+    asyncio_logging_level: int = logging.DEBUG
 
 
 class WebServer:
@@ -59,6 +59,10 @@ class WebServer:
         )
         self.logger = logging.getLogger()
         self.logger.info(f'writing logs to {logs_file_path}')
+
+        asyncio_logger = logging.getLogger('asyncio')
+        asyncio_logger.disabled = not settings.asyncio_logging
+        asyncio_logger.setLevel(settings.asyncio_logging_level)
 
         self.settings = settings
 
