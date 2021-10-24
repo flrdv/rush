@@ -145,6 +145,12 @@ class Request:
 
         return self._awaited_headers
 
+    async def fragment(self) -> bytes:
+        if not self._awaited_fragment:
+            self._awaited_fragment = await self._fragment
+
+        return self._awaited_fragment
+
     async def body(self) -> bytes:
         if not self._awaited_body:
             self._awaited_body = await self._body
