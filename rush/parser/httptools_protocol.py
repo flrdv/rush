@@ -26,8 +26,6 @@ class Protocol:
 
         self.parser: Union[HttpRequestParser, None] = None
 
-        self.on_header = self.headers.__setitem__
-
     def on_url(self, url: bytes):
         if b'%' in url:
             url = decode_url(url)
@@ -45,6 +43,9 @@ class Protocol:
         self.request_obj.set_path(url)
         self.request_obj.set_params(parameters)
         self.request_obj.set_fragment(fragment)
+
+    def on_header(self, header: bytes, value: bytes):
+        self.headers[header.decode()] = value.decode()
 
     def on_headers_complete(self):
         self.request_obj.set_protocol(self.parser.get_http_version())
