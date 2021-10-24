@@ -1,8 +1,9 @@
-import asyncio
 import os
 import socket
 import logging
+import asyncio
 import multiprocessing
+from signal import SIGKILL
 from traceback import format_exc
 from dataclasses import dataclass
 from typing import List, Dict, Type, Union
@@ -61,7 +62,7 @@ class WebServer:
 
         self.settings = settings
 
-        self.children: List[multiprocessing.Process] = []
+        self.children: List[int] = []
         self.parent_pid: int = os.getpid()
 
         self.http_errors_handlers: Dict[Type[exceptions.HTTPError], Coroutine] = {}
@@ -88,18 +89,18 @@ class WebServer:
 
         self.logger.debug(f'forking {self.settings.processes} times')
 
-        if __name__ == '__main__':
-            for child_num in range(self.settings.processes - 1):
-                child_process = multiprocessing.Process(
-                    name=f'Rush-webserver child process #{child_num}',
-                    target=self._server_worker,
-                    args=(dp,)
-                )
-                self.children.append(child_process)
-                child_process.start()
-                self.logger.debug(f'started child process id={child_num} pid={child_process.pid}')
+        for child_num in range(self.settings.processes - 1):
+            child_pid = os.fork()
 
-        self.logger.info('children has been spawned')
+            if child_pid != 0:
+                self.children.append(child_pid)
+                self.logger.debug(f'started child process id={child_num} pid={child_pid}')
+            else:
+                break
+
+        if self.is_parent():
+            self.logger.info('children has been spawned')
+
         self._server_worker(dp)
 
     def _server_worker(self, dp: Dispatcher):
@@ -137,8 +138,9 @@ class WebServer:
 
             raise SystemExit(1)
 
-        self.logger.info(f'successfully bound socket on {self.settings.host}:{self.settings.port}')
-        self.logger.info('press CTRL-C to stop the server')
+        if self.is_parent():
+            self.logger.info(f'successfully bound socket on {self.settings.host}:{self.settings.port}')
+            self.logger.info('press CTRL-C to stop the server')
 
         http_server = self.settings.httpserver(
             sock,
@@ -183,7 +185,10 @@ class WebServer:
     def kill_children(self):
         if self.is_parent():
             self.logger.debug('killing children...')
-            set(map(lambda child: child.kill(), self.children))
+
+            for child in self.children:
+                os.kill(child, SIGKILL)
+
             self.children.clear()
             self.logger.info('killed all the children')
 
