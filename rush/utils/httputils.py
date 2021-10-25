@@ -19,7 +19,7 @@ def render_http_response(protocol: str,
                          user_headers: Union[dict, None],
                          body: Union[str, bytes],
                          exclude_headers: Tuple[str] = (),
-                         auto_content_length: bool = True):
+                         count_content_length: bool = True):
     # default headers
     # TODO: add server-time header
     headers = {
@@ -28,7 +28,7 @@ def render_http_response(protocol: str,
         **(user_headers or {})
     }
 
-    if auto_content_length:
+    if count_content_length:
         headers['content-length'] = len(body)
     if exclude_headers:
         set(map(headers.pop, exclude_headers))
