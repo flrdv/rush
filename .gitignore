@@ -128,3 +128,4 @@ dmypy.json
 linesofcode.py
 rush/tests/
 tests/
+extended_linesofcode.py
