@@ -58,16 +58,6 @@ class Request:
         bytes length, not a lot, but also can be a trouble
         """
 
-        """
-        So much noqa's only because pycharm is sometimes really strange
-        he thought that if function is async, all the futures' methods
-        are also coroutines and I need to await them. IDK why this happened,
-        but some really strange shit. I thought it's better just to ignore
-        them with noqa (I'm a perfectionist and can't stand yellow in code) 
-        """
-
-        # print('wiping')
-
         self.path = None
         self.fragment = None
         self.raw_parameters = None
@@ -87,7 +77,7 @@ class Request:
         in event loop
         """
 
-        self._on_chunk = handler  # make_sure_async(handler)
+        self._on_chunk = make_sure_async(handler)
 
     def on_complete(self, handler: Union[Callable[[bytes], Callable],
                                          Callable[[bytes], Awaitable]]) -> None:
@@ -95,7 +85,7 @@ class Request:
         Same as on_chunk
         """
 
-        self._on_complete = handler  # make_sure_async(handler)
+        self._on_complete = make_sure_async(handler)
 
     def get_on_chunk(self) -> Callable[[bytes], Awaitable]:
         return self._on_chunk
@@ -106,12 +96,12 @@ class Request:
     def set_http_callback(self, callback: Callable[[bytes], Callable]):
         self.http_callback = callback
 
-    async def response(self,
-                       code: int = 200,
-                       status: Union[str, bytes, None] = None,
-                       body: Union[str, bytes] = b'',
-                       headers: Union[dict, 'CaseInsensitiveDict', None] = None
-                       ) -> None:
+    def response(self,
+                 code: int = 200,
+                 status: Union[str, bytes, None] = None,
+                 body: Union[str, bytes] = b'',
+                 headers: Union[dict, 'CaseInsensitiveDict', None] = None
+                 ) -> None:
         self.http_callback(
             render_http_response(
                 self.protocol,
