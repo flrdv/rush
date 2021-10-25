@@ -7,7 +7,7 @@ app = webserver.WebServer()
 
 @dp.get('/')
 async def deco_handler(request: entities.Request) -> None:
-    await request.response(
+    return request.response(
         code=200,
         body=b'Hello, world!'
     )
@@ -15,7 +15,7 @@ async def deco_handler(request: entities.Request) -> None:
 
 @dp.get('/awaiting-demo')
 async def awaiting_demo(request: entities.Request) -> None:
-    await request.response(
+    return request.response(
         code=200,
         body=b'awaiting request methods has succeeded'
     )
@@ -23,12 +23,12 @@ async def awaiting_demo(request: entities.Request) -> None:
 
 async def aiohttp_like_handler(request: entities.Request) -> None:
     if 'easter' in request.headers:
-        return await request.response(
+        return request.response(
             code=201,
             body=b'wow, you found an easter egg!'
         )
 
-    await request.response(
+    request.response(
         code=200,
         body=request.body
     )
@@ -39,4 +39,3 @@ dp.add_routes([
 ])
 
 app.run(dp)
-
