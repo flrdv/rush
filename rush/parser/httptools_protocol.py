@@ -1,4 +1,5 @@
-from typing import Union
+import asyncio
+from typing import Optional
 
 from httptools import HttpRequestParser
 
@@ -16,15 +17,15 @@ class Protocol:
                  ):
         self.request_obj = request_obj
 
-        self.body = b''
-        self.file = False
+        self.body: bytes = b''
+        self.file: bool = False
 
         self.received: bool = False
 
-        self._on_chunk: Union[Coroutine, None] = None
-        self._on_complete: Union[Coroutine[Nothing], None] = None
+        self._on_chunk: Optional[Coroutine] = None
+        self._on_complete: Optional[Coroutine[Nothing]] = None
 
-        self.parser: Union[HttpRequestParser, None] = None
+        self.parser: Optional[HttpRequestParser] = None
 
     def on_url(self, url: bytes):
         if b'%' in url:
@@ -45,8 +46,6 @@ class Protocol:
         self.request_obj.fragment = fragment
         self.request_obj.method = self.parser.get_method()
 
-        # print('filled path, params and fragment')
-
     def on_header(self, header: bytes, value: bytes):
         self.headers[header.decode()] = value.decode()
 
@@ -54,15 +53,15 @@ class Protocol:
         self.request_obj.protocol = self.parser.get_http_version()
         self.request_obj.headers = self.headers
 
-        if self.headers.get(b'transfer-encoding') == b'chunked' or \
-                self.headers.get(b'content-type', b'').startswith(b'multipart/'):
+        if self.headers.get('transfer-encoding') == 'chunked' or \
+                self.headers.get('content-type', '').startswith('multipart/'):
             self.file = True
             self._on_chunk, self._on_complete = \
                 self.request_obj.get_on_chunk(), self.request_obj.get_on_complete()
 
     def on_body(self, body: bytes):
         if self._on_chunk:
-            self._on_chunk(body)
+            asyncio.create_task(self._on_chunk(body))
         else:
             self.request_obj.body += body
 
@@ -70,4 +69,4 @@ class Protocol:
         self.received = True
 
         if self._on_complete:
-            self._on_complete()
+            asyncio.create_task(self._on_complete())
