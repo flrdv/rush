@@ -13,21 +13,29 @@ async def deco_handler(request: entities.Request) -> None:
     )
 
 
-@dp.get('/awaiting-demo')
+@dp.get('/get-request-fields')
 async def awaiting_demo(request: entities.Request) -> None:
+    method: bytes = request.method
+    path: bytes = request.path
+    headers: entities.CaseInsensitiveDict = request.headers
+    body: bytes = request.body
+    
     return request.response(
         code=200,
-        body=b'awaiting request methods has succeeded'
+        body=b'great job, buddy'
     )
 
 
-async def aiohttp_like_handler(request: entities.Request) -> None:
+async def echo_req_body_handler(request: entities.Request) -> None:
     if 'easter' in request.headers:
         return request.response(
             code=201,
             body=b'wow, you found an easter egg!'
         )
-
+    
+    # it shouldn't be returned cause only one call of 
+    # request.response() responses. Used returns for
+    # more defined & usual behaviour
     request.response(
         code=200,
         body=request.body
@@ -35,7 +43,7 @@ async def aiohttp_like_handler(request: entities.Request) -> None:
 
 
 dp.add_routes([
-    Route(aiohttp_like_handler, '/echo', 'GET')
+    Route(echo_req_body_handler, '/echo', 'GET')
 ])
 
 app.run(dp)
