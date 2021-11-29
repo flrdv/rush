@@ -26,7 +26,67 @@ def make_sure_async(func: Union[Callable[[Any], Callable],
         else make_async(func)
 
 
+class CaseInsensitiveDict(dict):
+    """
+    A class that works absolutely like usual dict, but keys are case-insensitive
+    Do not try to make him work with anything that is not bytes or a string!
+    """
+
+    def __init__(self, *args, **kwargs):
+        # it's really faster to call super() once
+        # and get it from self, than call it every time
+        self.__parent = super()
+        super().__init__(*args, **kwargs)
+
+    def __getitem__(self, item: Union[str, bytes]) -> Any:
+        return self.__parent.__getitem__(item.lower())
+
+    def __setitem__(self, key: Union[str, bytes], value: Any) -> None:
+        self.__parent.__setitem__(key.lower(), value)
+
+    def __contains__(self, item: Union[str, bytes]) -> bool:
+        return self.__parent.__contains__(item.lower())
+
+    def get(self, item: Union[str, bytes], instead: Any = None) -> Any:
+        return self.__parent.get(item.lower(), instead)
+
+    def pop(self, key: Union[str, bytes]) -> Any:
+        return self.__parent.pop(key.lower())
+
+    def setdefault(self, key: Union[str, bytes], default: Any = None) -> Any:
+        return self.__parent.setdefault(key.lower(), default)
+
+    def update(self, other, **kwargs):
+        self.__parent.update(
+            {key.lower(): value for key, value in other.items()},
+            **kwargs
+        )
+
+
+class ContextDict(dict):
+    """
+    Context dict is just an abstraction to allow usage of dict without
+    explicit __getitem__ and __setitem__. It means you can get (and set)
+    values just by typing like:
+        >>> ctx_dict = ContextDict()
+        >>> ctx_dict.variable = 'some value'
+        >>> ctx_dict.variable
+        'some value'
+
+    Thanks to t.me/entressi for this snippet (the fastest solution I got from him)
+    """
+
+    def __init__(self, *args, **kwargs):
+        super(ContextDict, self).__init__(*args, **kwargs)
+        self.__dict__ = self
+
+
 class Request:
+    # Purpose of context in request is only for exchanging some data between
+    # middlewares and handlers without a lot of shitcode like django does
+    # Values from this context are changing only in handlers or middlewares
+    ctx: ContextDict = ContextDict()
+
     def __init__(self,
                  http_callback: HttpResponseCallback,
                  cache: sfs.base.SFS):
@@ -64,6 +124,7 @@ class Request:
         self.parsed_parameters: Optional[Dict[str, List[str]]] = None
         self.headers.clear()
         self.body = b''
+        self.ctx.clear()
 
         self._on_chunk = None
         self._on_complete = None
@@ -100,7 +161,7 @@ class Request:
                  code: int = 200,
                  status: Union[str, bytes, None] = None,
                  body: Union[str, bytes] = b'',
-                 headers: Union[dict, 'CaseInsensitiveDict', None] = None
+                 headers: Union[dict, CaseInsensitiveDict, None] = None
                  ) -> None:
         self.http_callback(
             render_http_response(
@@ -134,40 +195,3 @@ class Request:
             self.parsed_parameters = parse_params(self.raw_parameters)
 
         return self.parsed_parameters
-
-
-class CaseInsensitiveDict(dict):
-    """
-    A class that works absolutely like usual dict, but keys are case-insensitive
-    Do not try to make him work with anything that is not bytes or a string!
-    """
-
-    def __init__(self, *args, **kwargs):
-        # it's really faster to call super() once
-        # and get it from self, than call it every time
-        self.__parent = super()
-        super().__init__(*args, **kwargs)
-
-    def __getitem__(self, item: Union[str, bytes]) -> Any:
-        return self.__parent.__getitem__(item.lower())
-
-    def __setitem__(self, key: Union[str, bytes], value: Any) -> None:
-        self.__parent.__setitem__(key.lower(), value)
-
-    def __contains__(self, item: Union[str, bytes]) -> bool:
-        return self.__parent.__contains__(item.lower())
-
-    def get(self, item: Union[str, bytes], instead: Any = None) -> Any:
-        return self.__parent.get(item.lower(), instead)
-
-    def pop(self, key: Union[str, bytes]) -> Any:
-        return self.__parent.pop(key.lower())
-
-    def setdefault(self, key: Union[str, bytes], default: Any = None) -> Any:
-        return self.__parent.setdefault(key.lower(), default)
-
-    def update(self, other, **kwargs):
-        self.__parent.update(
-            {key.lower(): value for key, value in other.items()},
-            **kwargs
-        )
