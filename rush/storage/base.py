@@ -1,5 +1,6 @@
 """
-SFS is a Static Files Subsystem - system for caching and sending
+Storage is a storage with static (not only static, any is available but only
+static is available by default) - system for caching and sending
 files to user by their path. May be used as for static content delivering,
 as for anything else, including local server's filesystem watching
 """
@@ -10,7 +11,7 @@ from typing import Union, Dict
 from ..typehints import Path, Connection, HttpResponseCallback
 
 
-class SFS(abc.ABC):
+class Storage(abc.ABC):
     def add_file(self, path: Path) -> None:
         """
         Add file by it's path

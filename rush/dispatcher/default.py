@@ -57,13 +57,15 @@ class SimpleAsyncDispatcher(Dispatcher):
     async def process_request(self,
                               request: Request
                               ) -> None:
-        if await request.path() not in self.usual_handlers:
-            handler = self.any_paths_handlers[await request.method()]
+        # print('processing request with path:', request.path, 'and method:', request.method)
+        # print(self.usual_handlers)
+        if request.path not in self.usual_handlers:
+            handler = self.any_paths_handlers[request.method]
 
             if handler is None:
                 raise exceptions.HTTPNotFound(request)
         else:
-            handler = self.usual_handlers[await request.path()]
+            handler = self.usual_handlers[request.path]
 
         await handler.handler(request)
         await request.wipe()

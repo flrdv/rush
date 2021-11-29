@@ -1,4 +1,5 @@
-from typing import Union
+import asyncio
+from typing import Optional
 
 from httptools import HttpRequestParser
 
@@ -16,15 +17,15 @@ class Protocol:
                  ):
         self.request_obj = request_obj
 
-        self.body = b''
-        self.file = False
+        self.body: bytes = b''
+        self.file: bool = False
 
         self.received: bool = False
 
-        self._on_chunk: Union[Coroutine, None] = None
-        self._on_complete: Union[Coroutine[Nothing], None] = None
+        self._on_chunk: Optional[Coroutine] = None
+        self._on_complete: Optional[Coroutine[Nothing]] = None
 
-        self.parser: Union[HttpRequestParser, None] = None
+        self.parser: Optional[HttpRequestParser] = None
 
     def on_url(self, url: bytes):
         if b'%' in url:
@@ -40,37 +41,32 @@ class Protocol:
         elif b'#' in url:
             url, fragment = url.split(b'#', 1)
 
-        self.request_obj.set_path(url)
-        self.request_obj.set_params(parameters)
-        self.request_obj.set_fragment(fragment)
+        self.request_obj.path = url
+        self.request_obj.raw_parameters = parameters
+        self.request_obj.fragment = fragment
+        self.request_obj.method = self.parser.get_method()
 
     def on_header(self, header: bytes, value: bytes):
         self.headers[header.decode()] = value.decode()
 
     def on_headers_complete(self):
-        self.request_obj.set_protocol(self.parser.get_http_version())
-        self.request_obj.set_headers(self.headers)
+        self.request_obj.protocol = self.parser.get_http_version()
+        self.request_obj.headers = self.headers
 
-        if self.headers.get(b'transfer-encoding') == b'chunked' or \
-                self.headers.get(b'content-type', b'').startswith(b'multipart/'):
+        if self.headers.get('transfer-encoding') == 'chunked' or \
+                self.headers.get('content-type', '').startswith('multipart/'):
             self.file = True
             self._on_chunk, self._on_complete = \
                 self.request_obj.get_on_chunk(), self.request_obj.get_on_complete()
 
     def on_body(self, body: bytes):
         if self._on_chunk:
-            self._on_chunk(body)
+            asyncio.create_task(self._on_chunk(body))
         else:
-            self.body += body
-
-    def on_body_complete(self):
-        self.request_obj.set_body(self.body)
+            self.request_obj.body += body
 
     def on_message_complete(self):
-        if not self.body:
-            self.request_obj.set_body(b'')
-
         self.received = True
 
         if self._on_complete:
-            self._on_complete()
+            asyncio.create_task(self._on_complete())

@@ -1,8 +1,7 @@
 import asyncio
-from asyncio import Future
 from typing import Union, Any, Dict, List, Callable, Awaitable, Optional
 
-from . import sfs
+from . import storage
 from .utils.status_codes import status_codes
 from .utils.httputils import render_http_response, parse_params
 from .typehints import (HttpResponseCallback, Connection)
@@ -25,209 +24,6 @@ def make_sure_async(func: Union[Callable[[Any], Callable],
     return \
         func if asyncio.iscoroutinefunction(func) \
         else make_async(func)
-
-
-class Request:
-    def __init__(self,
-                 http_callback: HttpResponseCallback,
-                 cache: sfs.base.SFS):
-        self.http_callback = http_callback
-        self.cache = cache
-
-        # not using Union cause every object's fields after initializing
-        # ALWAYS will be refilled, but also I'd like to have proper
-        # typehints
-        self._method: Future = Future()
-        self._awaited_method: Optional[bytes] = None
-        self._path: Future = Future()
-        self._awaited_path: Optional[bytes] = None
-        self._fragment: Future = Future()
-        self._awaited_fragment: Optional[bytes] = None
-        self._raw_parameters: Future = Future()
-        self._awaited_raw_parameters: Optional[bytes] = None
-        self._parsed_parameters: Optional[Dict[str, List[str]]] = None
-        self._protocol: Future = Future()
-        self._awaited_protocol: Optional[bytes] = None
-
-        self._headers: Future = Future()
-        self._awaited_headers: Optional[CaseInsensitiveDict] = None
-        self._body: Future = Future()
-        self._awaited_body: Optional[bytes] = None
-
-        self.socket: Optional[Connection] = None
-        self._on_chunk: Optional[Callable] = None
-        self._on_complete: Optional[Callable] = None
-
-    async def wipe(self):
-        """
-        A method that clears path, body and headers attributes
-        The purpose of this function is not to let already processed
-        requests live longer than it should, cause this is potential
-        DoS vulnerability. Also clearing path as it can be up to 65535
-        bytes length, not a lot, but also can be a trouble
-        """
-
-        """
-        So much noqa's only because pycharm is sometimes really strange
-        he thought that if function is async, all the futures' methods
-        are also coroutines and I need to await them. IDK why this happened,
-        but some really strange shit. I thought it's better just to ignore
-        them with noqa (I'm a perfectionist and can't stand yellow in code) 
-        """
-
-        self._method.__init__()          # noqa
-        self._awaited_method = None
-        self._path.__init__()            # noqa
-        self._awaited_path = None
-        self._fragment.__init__()        # noqa
-        self._awaited_fragment = None
-        self._raw_parameters.__init__()  # noqa
-        self._awaited_raw_parameters = None
-        self._parsed_parameters = None
-        self._protocol.__init__()        # noqa
-        self._awaited_protocol = None
-
-        (await self.headers()).clear()
-        self._headers.__init__()         # noqa
-        self._awaited_headers = None
-        self._body.__init__()            # noqa
-        self._awaited_body = None
-
-        self._on_chunk = None
-        self._on_complete = None
-
-    def on_chunk(self, handler: Union[Callable[[bytes], Callable],
-                                      Callable[[bytes], Awaitable]]) -> None:
-        """
-        on_chunk can receive as usual callable, as coroutines. But
-        in case of getting usual callable, we make a coroutine
-        from it, that is actually not async, but able to be ran
-        in event loop
-        """
-
-        self._on_chunk = handler  # make_sure_async(handler)
-
-    def on_complete(self, handler: Union[Callable[[bytes], Callable],
-                                         Callable[[bytes], Awaitable]]) -> None:
-        """
-        Same as on_chunk
-        """
-
-        self._on_complete = handler  # make_sure_async(handler)
-
-    def get_on_chunk(self) -> Callable[[bytes], Awaitable]:
-        return self._on_chunk
-
-    def get_on_complete(self) -> Callable[[], Awaitable]:
-        return self._on_complete
-
-    async def method(self) -> bytes:
-        if not self._awaited_method:
-            self._awaited_method = await self._method
-
-        return self._awaited_method
-
-    async def protocol(self) -> str:
-        if not self._awaited_protocol:
-            self._awaited_protocol = await self._protocol
-
-        return self._awaited_protocol
-
-    async def path(self) -> bytes:
-        if not self._awaited_path:
-            self._awaited_path = await self._path
-
-        return self._awaited_path
-
-    async def headers(self) -> 'CaseInsensitiveDict':
-        if not self._awaited_headers:
-            self._awaited_headers = await self._headers
-
-        return self._awaited_headers
-
-    async def fragment(self) -> bytes:
-        if not self._awaited_fragment:
-            self._awaited_fragment = await self._fragment
-
-        return self._awaited_fragment
-
-    async def body(self) -> bytes:
-        if not self._awaited_body:
-            self._awaited_body = await self._body
-
-        return self._awaited_body
-
-    def set_method(self, method: bytes):
-        self._method.set_result(method)
-
-    def set_protocol(self, protocol: str):
-        self._protocol.set_result(protocol)
-
-    def set_path(self, path: bytes):
-        self._path.set_result(path)
-
-    def set_params(self, params: bytes):
-        self._raw_parameters.set_result(params)
-
-    def set_fragment(self, fragment: bytes):
-        self._fragment.set_result(fragment)
-
-    def set_headers(self, headers: 'CaseInsensitiveDict'):
-        self._headers.set_result(headers)
-
-    def set_body(self, body: bytes):
-        self._body.set_result(body)
-
-    def set_http_callback(self, callback: Callable[[bytes], Callable]):
-        self.http_callback = callback
-
-    async def response(self,
-                       code: int = 200,
-                       status: Union[str, bytes, None] = None,
-                       body: Union[str, bytes] = b'',
-                       headers: Union[dict, 'CaseInsensitiveDict', None] = None
-                       ) -> None:
-        self.http_callback(
-            render_http_response(
-                await self.protocol(),
-                code,
-                status or status_codes[code],
-                headers,
-                body
-            )
-        )
-
-    def raw_response(self,
-                     data: bytes
-                     ) -> None:
-        self.http_callback(data)
-
-    async def params(self) -> Dict[str, List[str]]:
-        """
-        Returns a dict with URI parameters, where keys are bytes
-        and values are lists with bytes. This may be not convenient
-        for user, but this behaviour matches RFC
-
-        Also, it isn't parsing anything until user will need it.
-        If user never called Request.params(), they also never will
-        be parsed
-
-        If no parameters provided, empty dictionary will be returned
-        """
-
-        if self._parsed_parameters:
-            return self._parsed_parameters
-
-        raw_params = self._awaited_raw_parameters \
-            if self._awaited_raw_parameters \
-            else await self._raw_parameters
-
-        if not raw_params:
-            return {}
-
-        self._parsed_parameters = parse_params(raw_params)
-
-        return self._parsed_parameters
 
 
 class CaseInsensitiveDict(dict):
@@ -265,3 +61,137 @@ class CaseInsensitiveDict(dict):
             {key.lower(): value for key, value in other.items()},
             **kwargs
         )
+
+
+class ContextDict(dict):
+    """
+    Context dict is just an abstraction to allow usage of dict without
+    explicit __getitem__ and __setitem__. It means you can get (and set)
+    values just by typing like:
+        >>> ctx_dict = ContextDict()
+        >>> ctx_dict.variable = 'some value'
+        >>> ctx_dict.variable
+        'some value'
+
+    Thanks to t.me/entressi for this snippet (the fastest solution I got from him)
+    """
+
+    def __init__(self, *args, **kwargs):
+        super(ContextDict, self).__init__(*args, **kwargs)
+        self.__dict__ = self
+
+
+class Request:
+    # Purpose of context in request is only for exchanging some data between
+    # middlewares and handlers without a lot of shitcode like django does
+    # Values from this context are changing only in handlers or middlewares
+    ctx: ContextDict = ContextDict()
+
+    def __init__(self,
+                 http_callback: HttpResponseCallback,
+                 cache: storage.base.Storage):
+        self.http_callback = http_callback
+        self.cache = cache
+
+        # not using Union cause every object's fields after initializing
+        # ALWAYS will be refilled, but also I'd like to have proper
+        # typehints
+        self.method: Optional[bytes] = None
+        self.path: Optional[bytes] = None
+        self.fragment: Optional[bytes] = None
+        self.raw_parameters: Optional[bytes] = None
+        self.parsed_parameters: Optional[Dict[str, List[str]]] = None
+        self.protocol: Optional[str] = None
+        self.headers = None
+        self.body: bytes = b''
+
+        self.socket: Optional[Connection] = None
+        self._on_chunk: Optional[Callable] = None
+        self._on_complete: Optional[Callable] = None
+
+    async def wipe(self):
+        """
+        A method that clears path, body and headers attributes
+        The purpose of this function is not to let already processed
+        requests live longer than it should, cause this is potential
+        DoS vulnerability. Also clearing path as it can be up to 65535
+        bytes length, not a lot, but also can be a trouble
+        """
+
+        self.path = None
+        self.fragment = None
+        self.raw_parameters = None
+        self.parsed_parameters: Optional[Dict[str, List[str]]] = None
+        self.headers.clear()
+        self.body = b''
+        self.ctx.clear()
+
+        self._on_chunk = None
+        self._on_complete = None
+
+    def on_chunk(self, handler: Union[Callable[[bytes], Callable],
+                                      Callable[[bytes], Awaitable]]) -> None:
+        """
+        on_chunk can receive as usual callable, as coroutines. But
+        in case of getting usual callable, we make a coroutine
+        from it, that is actually not async, but able to be ran
+        in event loop
+        """
+
+        self._on_chunk = make_sure_async(handler)
+
+    def on_complete(self, handler: Union[Callable[[bytes], Callable],
+                                         Callable[[bytes], Awaitable]]) -> None:
+        """
+        Same as on_chunk
+        """
+
+        self._on_complete = make_sure_async(handler)
+
+    def get_on_chunk(self) -> Callable[[bytes], Awaitable]:
+        return self._on_chunk
+
+    def get_on_complete(self) -> Callable[[], Awaitable]:
+        return self._on_complete
+
+    def set_http_callback(self, callback: Callable[[bytes], Callable]):
+        self.http_callback = callback
+
+    def response(self,
+                 code: int = 200,
+                 status: Union[str, bytes, None] = None,
+                 body: Union[str, bytes] = b'',
+                 headers: Union[dict, CaseInsensitiveDict, None] = None
+                 ) -> None:
+        self.http_callback(
+            render_http_response(
+                self.protocol,
+                code,
+                status or status_codes[code],
+                headers,
+                body
+            )
+        )
+
+    def raw_response(self,
+                     data: bytes
+                     ) -> None:
+        self.http_callback(data)
+
+    async def params(self) -> Dict[str, List[str]]:
+        """
+        Returns a dict with URI parameters, where keys are bytes
+        and values are lists with bytes. This may be not convenient
+        for user, but this behaviour matches RFC
+
+        Also, it isn't parsing anything until user will need it.
+        If user never called Request.params(), they also never will
+        be parsed
+
+        If no parameters provided, empty dictionary will be returned
+        """
+
+        if not self.parsed_parameters:
+            self.parsed_parameters = parse_params(self.raw_parameters)
+
+        return self.parsed_parameters

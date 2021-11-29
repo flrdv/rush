@@ -8,7 +8,7 @@ from uvloop.loop import TCPTransport
 from httptools import HttpRequestParser
 
 from . import base
-from ..sfs.base import SFS
+from ..storage.base import Storage
 from ..entities import Request
 from ..typehints import Coroutine
 from ..parser.httptools_protocol import Protocol as LLHttpProtocol
@@ -18,11 +18,11 @@ uvloop.install()
 
 def server_protocol_factory(
         on_message_complete: Coroutine,
-        sfs: SFS
+        storage: Storage
 ) -> 'AsyncioServerProtocol':
     request_obj = Request(
         lambda data: 'will be set later',
-        sfs
+        storage
     )
     protocol = LLHttpProtocol(request_obj)
     parser = HttpRequestParser(protocol)
@@ -33,7 +33,7 @@ def server_protocol_factory(
         protocol,
         parser,
         request_obj,
-        sfs
+        storage
     )
 
 
@@ -43,13 +43,13 @@ class AsyncioServerProtocol(asyncio.Protocol):
                  protocol: LLHttpProtocol,
                  parser: HttpRequestParser,
                  request_obj: Request,
-                 sfs: SFS):
+                 storage: Storage):
         self.on_message_complete = on_message_complete
         self.transport: Optional[TCPTransport] = None
         self.protocol = protocol
         self.parser = parser
         self.request_obj = request_obj
-        self.sfs = sfs
+        self.storage = storage
 
         self.first_time: bool = True
 
@@ -58,16 +58,12 @@ class AsyncioServerProtocol(asyncio.Protocol):
         self.request_obj.set_http_callback(transport.write)
 
     def data_received(self, data: bytes) -> None:
-        if self.first_time:
-            asyncio.create_task(
-                self.on_message_complete(self.request_obj)
-            )
-            self.first_time = False
-
         self.parser.feed_data(data)
 
         if self.protocol.received:
-            self.first_time = True
+            asyncio.create_task(
+                self.on_message_complete(self.request_obj)
+            )
             self.protocol.__init__(
                 self.request_obj
             )
@@ -82,13 +78,13 @@ class AioHTTPServer(base.HTTPServer):
                  sock: socket.socket,
                  max_conns: int,
                  on_message_complete: Coroutine,
-                 sfs: SFS,
-                 write_logs: bool = True):
+                 storage: Storage,
+                 **kwargs):
         sock.listen(max_conns)
 
         self.sock = sock
         self.on_message_complete = on_message_complete
-        self.sfs = sfs
+        self.storage = storage
         self.server: Optional[asyncio.AbstractServer] = None
 
     async def poll(self):
@@ -96,7 +92,7 @@ class AioHTTPServer(base.HTTPServer):
         server = await loop.create_server(
             lambda: server_protocol_factory(
                 self.on_message_complete,
-                self.sfs
+                self.storage
             ),
             sock=self.sock,
             start_serving=False

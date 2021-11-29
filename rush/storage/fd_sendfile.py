@@ -1,10 +1,10 @@
 from typing import Dict, Union
 
-from .base import SFS
+from .base import Storage
 from ..typehints import Path, Connection, HttpResponseCallback, FileDescriptor
 
 
-class SimpleDevSFS(SFS):
+class SimpleDevStorage(Storage):
     """
     A simple cache based on socket.socket.sendfile() and no security
     and fool checks
