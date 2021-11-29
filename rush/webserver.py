@@ -10,7 +10,8 @@ from typing import List, Dict, Type, Union
 
 from .utils import sockutils
 from .typehints import Coroutine
-from .sfs import base as sfs_base, fd_sendfile as sfs_fd_sendfile
+from .storage import (base as storage_base,
+                      fd_sendfile as storage_fd_sendfile)
 from . import entities, exceptions
 from .server.base import HTTPServer
 from .dispatcher.base import Dispatcher
@@ -31,7 +32,7 @@ class Settings:
     logs_dir = 'logs'
     logs_file = 'webserver.log'
 
-    sfs: Type[sfs_base.SFS] = sfs_fd_sendfile.SimpleDevSFS
+    storage: Type[storage_base.Storage] = storage_fd_sendfile.SimpleDevStorage
     httpserver: Type[HTTPServer] = AioHTTPServer
 
     asyncio_logging: bool = True
@@ -150,7 +151,7 @@ class WebServer:
             sock,
             self.settings.max_connections,
             dp.process_request,
-            self.settings.sfs()
+            self.settings.storage()
         )
 
         while True:
