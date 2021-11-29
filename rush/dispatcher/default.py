@@ -1,11 +1,11 @@
 from asyncio import iscoroutinefunction
-from typing import (Dict, Any, Callable, Awaitable, Union, Iterable)
+from typing import (Dict, Callable, Awaitable, Union, Iterable)
 
 from .. import exceptions
 from .base import Dispatcher
 from ..entities import Request
-from ..utils.httpmethods import ALL_METHODS
-from ..typehints import RoutePath, Coroutine
+from ..utils.httputils import HTTP_METHODS
+from ..typehints import RoutePath, Coroutine, HTTPMethod
 from ..utils.stringutils import make_sure_bytes_or_none
 
 
@@ -36,7 +36,7 @@ class Route:
     def __init__(self,
                  handler: Coroutine,
                  path: RoutePath,
-                 method_or_methods: Union[str, bytes, Iterable] = ALL_METHODS
+                 method_or_methods: Union[str, bytes, Iterable] = HTTP_METHODS
                  ):
         self.handler = handler
         self.path = path if isinstance(path, bytes) else path.encode()
@@ -50,15 +50,13 @@ class Route:
 class SimpleAsyncDispatcher(Dispatcher):
     def __init__(self):
         self.usual_handlers: Dict[bytes, Handler] = {}
-        self.any_paths_handlers: Dict[Any[ALL_METHODS], Handler] = {
-            method: None for method in ALL_METHODS
+        self.any_paths_handlers: Dict[HTTPMethod, Handler] = {
+            method: None for method in HTTP_METHODS
         }
 
     async def process_request(self,
                               request: Request
                               ) -> None:
-        # print('processing request with path:', request.path, 'and method:', request.method)
-        # print(self.usual_handlers)
         if request.path not in self.usual_handlers:
             handler = self.any_paths_handlers[request.method]
 
@@ -73,7 +71,7 @@ class SimpleAsyncDispatcher(Dispatcher):
     def route(self,
               path: RoutePath,
               method: Union[str, bytes, None] = None,
-              methods: Iterable[bytes] = ALL_METHODS
+              methods: Iterable[HTTPMethod] = HTTP_METHODS
               ):
 
         if method is not None:
