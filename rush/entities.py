@@ -1,7 +1,7 @@
 import asyncio
 from typing import Union, Any, Dict, List, Callable, Awaitable, Optional
 
-from . import sfs
+from . import storage
 from .utils.status_codes import status_codes
 from .utils.httputils import render_http_response, parse_params
 from .typehints import (HttpResponseCallback, Connection)
@@ -89,7 +89,7 @@ class Request:
 
     def __init__(self,
                  http_callback: HttpResponseCallback,
-                 cache: sfs.base.SFS):
+                 cache: storage.base.Storage):
         self.http_callback = http_callback
         self.cache = cache
 
