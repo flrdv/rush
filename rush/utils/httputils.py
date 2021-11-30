@@ -1,5 +1,5 @@
 from string import hexdigits
-from typing import Union, Tuple, Dict, List, BinaryIO
+from typing import Union, Optional, Dict, List, BinaryIO
 
 from .status_codes import status_codes
 
@@ -13,25 +13,14 @@ def format_headers(headers: dict):
         .encode()
 
 
-def render_http_response(protocol: str,
+def render_http_response(protocol: bytes,
                          code: int,
-                         status_code: Union[str, None],
-                         user_headers: Union[dict, None],
+                         status_code: Optional[str],
+                         headers: dict,
                          body: Union[str, bytes],
-                         exclude_headers: Tuple[str] = (),
-                         count_content_length: bool = True):
-    # default headers
-    # TODO: add server-time header
-    headers = {
-        'server': 'rush',
-        'connection': 'keep-alive',
-        **(user_headers or {})
-    }
-
+                         count_content_length: bool = False):
     if count_content_length:
         headers['content-length'] = len(body)
-    if exclude_headers:
-        set(map(headers.pop, exclude_headers))
 
     status_description = status_code or status_codes.get(code, 'UNKNOWN')
 
@@ -41,7 +30,7 @@ def render_http_response(protocol: str,
 
     # I'm not using format_headers() function here just to avoid useless calling
     # as everybody knows, functions' calls are a bit expensive in CPython
-    return b'HTTP/%s %d %s\r\n%s\r\n\r\n%s' % (protocol.encode(), code, status_description,
+    return b'HTTP/%s %d %s\r\n%s\r\n\r\n%s' % (protocol, code, status_description,
                                                '\r\n'.join(f'{key}: {value}'
                                                            for key, value in headers.items())
                                                .encode(),
