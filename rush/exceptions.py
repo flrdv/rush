@@ -20,6 +20,8 @@ class HTTPError(Exception):
                  **kwargs):
         self.request = request
 
+        # an additional stash for dynamic values
+        # not very good choice, but may be useful in some cases
         for key, value in kwargs.items():
             setattr(self, key, value)
 
