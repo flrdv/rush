@@ -8,14 +8,15 @@ from traceback import format_exc
 from dataclasses import dataclass, field
 from typing import List, Dict, Type, Union, Optional
 
+from . import exceptions
 from .utils import sockutils
-from .typehints import Coroutine
-from .storage import (base as storage_base,
-                      fd_sendfile as storage_fd_sendfile)
-from . import entities, exceptions
 from .server.base import HTTPServer
+from .typehints import AsyncFunction
+from .entities import CaseInsensitiveDict
 from .dispatcher.base import BaseDispatcher
 from .server.aiohttpserver import AioHTTPServer
+from .storage import (base as storage_base,
+                      fd_sendfile as storage_fd_sendfile)
 
 
 @dataclass
@@ -27,10 +28,12 @@ class Settings:
     max_connections: Optional[int] = field(default=1024)
     processes: Optional[int] = field(default=None)
 
-    default_headers: dict = field(default={
-        'server': 'rush',
-        'connection': 'keep-alive'
-    })
+    default_headers: CaseInsensitiveDict = field(
+        default_factory=lambda: CaseInsensitiveDict(
+            server='rush',
+            connection='keep-alive'
+        )
+    )
 
     logging_level: int = field(default=logging.DEBUG)
     logging_format: str = field(default='[%(asctime)s] [%(levelname)s] %(name)s: %(message)s')
@@ -75,7 +78,7 @@ class WebServer:
         self.children: List[int] = []
         self.parent_pid: int = os.getpid()
 
-        self.http_errors_handlers: Dict[Type[exceptions.HTTPError], Coroutine] = {}
+        self.http_errors_handlers: Dict[Type[exceptions.HTTPError], AsyncFunction] = {}
 
     def run(self, dp: BaseDispatcher):
         """
@@ -155,7 +158,8 @@ class WebServer:
             sock,
             self.settings.max_connections,
             dp.process_request,
-            self.settings.storage()
+            self.settings.storage(),
+            self.settings.default_headers
         )
 
         while True:
