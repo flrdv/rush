@@ -5,6 +5,9 @@ from .status_codes import status_codes
 
 HEX_TO_BYTE = {(a + b).encode(): bytes.fromhex(a + b)
                for a in hexdigits for b in hexdigits}
+HTTP_METHODS = {b'GET', b'HEAD', b'POST', b'PUT',
+                b'DELETE', b'CONNECT', b'OPTIONS',
+                b'TRACE', b'PATCH'}
 
 
 def format_headers(headers: dict):
@@ -17,10 +20,33 @@ def render_http_response(protocol: bytes,
                          code: int,
                          status_code: Optional[str],
                          headers: dict,
-                         body: Union[str, bytes],
+                         body: bytes,
                          count_content_length: bool = False):
-    if count_content_length:
-        headers['content-length'] = len(body)
+    """
+    A function for rendering http responses. Uses C-formatting as the only way for
+    formatting byte-strings (f-strings with encoding are shit)
+
+    Arguments:
+             protocol - protocol version, string in format `major.minor`,
+             code - response status code,
+             status_code - may be None, than it'll be taken from the list of known.
+                           If no known status codes relate to the status code, UNKNOWN
+                           will be used
+             headers - a dict (or CaseInsensitiveDict) with headers. May be bytes, than
+                       they won't be rendered
+             body - only bytes are accepted
+             count_content_length - disabled by default, but if enabled and headers aren't
+                                    already rendered, content-length header will be replaced
+                                    by len(body)
+    """
+
+    if not isinstance(headers, bytes):
+        if count_content_length:
+            headers['content-length'] = len(body)
+
+        headers = '\r\n'.join(
+            f'{key}: {value}' for key, value in headers.items()
+        ).encode()
 
     status_description = status_code or status_codes.get(code, 'UNKNOWN')
 
@@ -30,11 +56,7 @@ def render_http_response(protocol: bytes,
 
     # I'm not using format_headers() function here just to avoid useless calling
     # as everybody knows, functions' calls are a bit expensive in CPython
-    return b'HTTP/%s %d %s\r\n%s\r\n\r\n%s' % (protocol, code, status_description,
-                                               '\r\n'.join(f'{key}: {value}'
-                                                           for key, value in headers.items())
-                                               .encode(),
-                                               body if isinstance(body, bytes) else body.encode())
+    return b'HTTP/%s %d %s\r\n%s\r\n\r\n%s' % (protocol, code, status_description, headers, body)
 
 
 def render_http_request(method: bytes,
