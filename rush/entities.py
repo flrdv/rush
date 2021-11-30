@@ -2,7 +2,6 @@ import asyncio
 from typing import Union, Any, Dict, List, Callable, Awaitable, Optional
 
 from . import storage
-from .utils.status_codes import status_codes
 from .utils.httputils import render_http_response, parse_params
 from .typehints import (HttpResponseCallback, Connection)
 
@@ -157,22 +156,6 @@ class Request:
     def set_http_callback(self, callback: Callable[[bytes], Callable]):
         self.http_callback = callback
 
-    def response(self,
-                 code: int = 200,
-                 status: Union[str, bytes, None] = None,
-                 body: Union[str, bytes] = b'',
-                 headers: Union[dict, CaseInsensitiveDict, None] = None
-                 ) -> None:
-        self.http_callback(
-            render_http_response(
-                self.protocol,
-                code,
-                status or status_codes[code],
-                headers,
-                body
-            )
-        )
-
     def raw_response(self,
                      data: bytes
                      ) -> None:
@@ -195,3 +178,31 @@ class Request:
             self.parsed_parameters = parse_params(self.raw_parameters)
 
         return self.parsed_parameters
+
+
+class Response:
+    """
+    Response class is just a storage
+    The actual response will happen after it will be returned
+    """
+
+    def __init__(self, default_headers: dict):
+        self.default_headers = default_headers
+        self.rendered_response: Optional[bytes] = None
+
+    def __call__(self,
+                 code: int = 200,
+                 status: Optional[str] = None,
+                 headers: Optional[dict] = None,
+                 body: bytes = b''
+                 ):
+        self.rendered_response = render_http_response(
+            protocol=b'1.1',
+            code=code,
+            status_code=status,
+            headers=headers if headers is not None else self.default_headers,
+            body=body,
+            # TODO: add handling different chunked responses
+            #       as they don't need specified content-length
+            count_content_length=True,
+        )
