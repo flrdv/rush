@@ -5,7 +5,7 @@ from httptools import HttpRequestParser
 
 from ..entities import Request
 from ..utils.httputils import decode_url
-from ..typehints import Coroutine, Nothing
+from ..typehints import AsyncFunction, Nothing
 from ..entities import CaseInsensitiveDict
 
 
@@ -23,8 +23,8 @@ class Protocol:
 
         self.received: bool = False
 
-        self._on_chunk: Optional[Coroutine] = None
-        self._on_complete: Optional[Coroutine[Nothing]] = None
+        self._on_chunk: Optional[AsyncFunction] = None
+        self._on_complete: Optional[AsyncFunction[Nothing]] = None
 
         self.parser: Optional[HttpRequestParser] = None
 
