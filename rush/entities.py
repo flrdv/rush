@@ -1,9 +1,9 @@
 import asyncio
 from typing import Union, Any, Dict, List, Callable, Awaitable, Optional
 
-from . import storage
+from .storage.base import Storage
+from .typehints import Connection
 from .utils.httputils import parse_params
-from .typehints import (HttpResponseCallback, Connection)
 
 
 def make_async(func: Callable) -> Callable[[Any], Awaitable]:
@@ -89,11 +89,8 @@ class Request:
     # Values from this context are changing only in handlers or middlewares
     ctx: ContextDict = ContextDict()
 
-    def __init__(self,
-                 http_callback: HttpResponseCallback,
-                 cache: storage.base.Storage):
-        self.http_callback = http_callback
-        self.cache = cache
+    def __init__(self, storage: Storage):
+        self.storage = storage
 
         # not using Union cause every object's fields after initializing
         # ALWAYS will be refilled, but also I'd like to have proper
@@ -155,14 +152,6 @@ class Request:
 
     def get_on_complete(self) -> Callable[[], Awaitable]:
         return self._on_complete
-
-    def set_http_callback(self, callback: Callable[[bytes], Callable]):
-        self.http_callback = callback
-
-    def raw_response(self,
-                     data: bytes
-                     ) -> None:
-        self.http_callback(data)
 
     async def params(self) -> Dict[str, List[str]]:
         """
