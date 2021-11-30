@@ -5,8 +5,8 @@ import asyncio
 import multiprocessing
 from signal import SIGKILL
 from traceback import format_exc
-from dataclasses import dataclass
-from typing import List, Dict, Type, Union
+from dataclasses import dataclass, field
+from typing import List, Dict, Type, Union, Optional
 
 from .utils import sockutils
 from .typehints import Coroutine
@@ -14,29 +14,34 @@ from .storage import (base as storage_base,
                       fd_sendfile as storage_fd_sendfile)
 from . import entities, exceptions
 from .server.base import HTTPServer
-from .dispatcher.base import Dispatcher
+from .dispatcher.base import BaseDispatcher
 from .server.aiohttpserver import AioHTTPServer
 
 
 @dataclass
 class Settings:
-    host: str = '0.0.0.0'
-    port: int = 9090
-    max_bind_retries: Union[int, None] = None
-    bind_retries_timeout: Union[int, float] = 3
-    max_connections: Union[int, None] = 1024
-    processes: Union[int, None] = None
+    host: str = field(default='0.0.0.0')
+    port: int = field(default=9090)
+    max_bind_retries: Optional[int] = field(default=None)
+    bind_retries_timeout: Union[int, float] = field(default=3)
+    max_connections: Optional[int] = field(default=1024)
+    processes: Optional[int] = field(default=None)
 
-    logging_level: int = logging.DEBUG
-    logging_format = '[%(asctime)s] [%(levelname)s] %(name)s: %(message)s'
-    logs_dir = 'logs'
-    logs_file = 'webserver.log'
+    default_headers: dict = field(default={
+        'server': 'rush',
+        'connection': 'keep-alive'
+    })
 
-    storage: Type[storage_base.Storage] = storage_fd_sendfile.SimpleDevStorage
-    httpserver: Type[HTTPServer] = AioHTTPServer
+    logging_level: int = field(default=logging.DEBUG)
+    logging_format: str = field(default='[%(asctime)s] [%(levelname)s] %(name)s: %(message)s')
+    logs_dir: str = field(default='logs')
+    logs_file: str = field(default='webserver.log')
 
-    asyncio_logging: bool = True
-    asyncio_logging_level: int = logging.DEBUG
+    storage: Type[storage_base.Storage] = field(default=storage_fd_sendfile.SimpleDevStorage)
+    httpserver: Type[HTTPServer] = field(default=AioHTTPServer)
+
+    asyncio_logging: bool = field(default=True)
+    asyncio_logging_level: int = field(default=logging.DEBUG)
 
 
 class WebServer:
@@ -72,7 +77,7 @@ class WebServer:
 
         self.http_errors_handlers: Dict[Type[exceptions.HTTPError], Coroutine] = {}
 
-    def run(self, dp: Dispatcher):
+    def run(self, dp: BaseDispatcher):
         """
         This function is called once when user starts the server.
         Everything it does - just checks whether dispatcher
@@ -81,7 +86,7 @@ class WebServer:
         web-server workers and running the n one
         """
 
-        if not isinstance(dp, Dispatcher):
+        if not isinstance(dp, BaseDispatcher):
             raise TypeError(f'{dp} object must be inherited from '
                             'rush.dispatcher.base.Dispatcher object!')
 
@@ -108,7 +113,7 @@ class WebServer:
 
         self._server_worker(dp)
 
-    def _server_worker(self, dp: Dispatcher):
+    def _server_worker(self, dp: BaseDispatcher):
         """
         Finally, we're in our brand-new process that belongs only to us, hohoho
         """
@@ -140,7 +145,6 @@ class WebServer:
                 self.kill_children()
 
             sock.close()
-
             raise SystemExit(1)
 
         if self.is_parent():
