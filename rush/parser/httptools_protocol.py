@@ -10,12 +10,14 @@ from ..entities import CaseInsensitiveDict
 
 
 class Protocol:
+    REQUEST_HEADERS = CaseInsensitiveDict()
+
     def __init__(self,
                  request_obj: Request,
                  ):
         self.request_obj = request_obj
 
-        self.headers = CaseInsensitiveDict()
+        self.headers = self.REQUEST_HEADERS.copy()
         self.body: bytes = b''
         self.file: bool = False
 
