@@ -2,7 +2,7 @@ import asyncio
 from typing import Union, Any, Dict, List, Callable, Awaitable, Optional
 
 from . import storage
-from .utils.httputils import render_http_response, parse_params
+from .utils.httputils import parse_params
 from .typehints import (HttpResponseCallback, Connection)
 
 
@@ -61,6 +61,9 @@ class CaseInsensitiveDict(dict):
             **kwargs
         )
 
+    def copy(self) -> 'CaseInsensitiveDict':
+        return CaseInsensitiveDict(self.items())
+
 
 class ContextDict(dict):
     """
@@ -108,7 +111,7 @@ class Request:
         self._on_chunk: Optional[Callable] = None
         self._on_complete: Optional[Callable] = None
 
-    async def wipe(self):
+    def wipe(self):
         """
         A method that clears path, body and headers attributes
         The purpose of this function is not to let already processed
@@ -186,23 +189,34 @@ class Response:
     The actual response will happen after it will be returned
     """
 
-    def __init__(self, default_headers: dict):
+    def __init__(self, default_headers: CaseInsensitiveDict):
         self.default_headers = default_headers
-        self.rendered_response: Optional[bytes] = None
+
+        self.code: int = 200
+        self.status: Optional[str] = None
+        self.headers: CaseInsensitiveDict = default_headers.copy()
+        self.body: Optional[bytes] = None
+
+    def add_body(self, body: Union[str, bytes]):
+        self.body += body if isinstance(body, bytes) else body.encode()
+
+    def wipe(self):
+        self.code = 200
+        self.status = None
+        self.headers = self.default_headers.copy()
+        self.body = None
 
     def __call__(self,
                  code: int = 200,
                  status: Optional[str] = None,
                  headers: Optional[dict] = None,
-                 body: bytes = b''
+                 body: Union[bytes, str] = b''
                  ):
-        self.rendered_response = render_http_response(
-            protocol=b'1.1',
-            code=code,
-            status_code=status,
-            headers=headers if headers is not None else self.default_headers,
-            body=body,
-            # TODO: add handling different chunked responses
-            #       as they don't need specified content-length
-            count_content_length=True,
-        )
+        self.code = code
+        self.status = status
+        self.body = body if isinstance(body, bytes) else body.encode()
+
+        if headers:
+            self.headers.update(headers)
+
+        return self
