@@ -1,7 +1,7 @@
 import socket
-from typing import Callable, Any, Awaitable, BinaryIO, Union, NewType
+from typing import Callable, Awaitable, BinaryIO, Union, NewType
 
-Coroutine = Callable[[Any], Awaitable]
+AsyncFunction = Callable[..., Awaitable]
 Path = str
 RoutePath = Union[str, bytes]
 FileDescriptor = BinaryIO
