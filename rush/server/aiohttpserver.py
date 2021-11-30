@@ -29,10 +29,8 @@ def server_protocol_factory(
         storage: Storage,
         default_headers: CaseInsensitiveDict
 ) -> 'AsyncioServerProtocol':
-    request_obj = Request(
-        lambda data: 'will be set later',
-        storage
-    )
+
+    request_obj = Request(storage)
     response_obj = Response(default_headers)
     protocol = LLHttpProtocol(request_obj)
     parser = HttpRequestParser(protocol)
