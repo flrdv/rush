@@ -1,29 +1,39 @@
 import socket
 import asyncio
+import warnings
 from typing import Optional
 
-import uvloop
-from uvloop.loop import TCPTransport
+try:
+    from uvloop import install as install_uvloop
+    from uvloop.loop import TCPTransport
+except ImportError as exc:
+    from asyncio.transports import BaseTransport as TCPTransport
+
+    def install_uvloop():
+        warnings.warn(f'failed to apply uvloop ({exc}), performance will be decreased')
+
 
 from httptools import HttpRequestParser
 
 from . import base
 from ..storage.base import Storage
-from ..entities import Request
-from ..typehints import Coroutine
+from ..typehints import AsyncFunction
+from ..entities import Request, Response
 from ..parser.httptools_protocol import Protocol as LLHttpProtocol
 
-uvloop.install()
+install_uvloop()
 
 
 def server_protocol_factory(
-        on_message_complete: Coroutine,
-        storage: Storage
+        on_message_complete: AsyncFunction,
+        storage: Storage,
+        default_headers: dict
 ) -> 'AsyncioServerProtocol':
     request_obj = Request(
         lambda data: 'will be set later',
         storage
     )
+    response_obj = Response(default_headers)
     protocol = LLHttpProtocol(request_obj)
     parser = HttpRequestParser(protocol)
     protocol.parser = parser
@@ -33,36 +43,39 @@ def server_protocol_factory(
         protocol,
         parser,
         request_obj,
+        response_obj,
         storage
     )
 
 
 class AsyncioServerProtocol(asyncio.Protocol):
     def __init__(self,
-                 on_message_complete: Coroutine,
+                 on_message_complete: AsyncFunction,
                  protocol: LLHttpProtocol,
                  parser: HttpRequestParser,
                  request_obj: Request,
+                 response_obj: Response,
                  storage: Storage):
         self.on_message_complete = on_message_complete
         self.transport: Optional[TCPTransport] = None
         self.protocol = protocol
         self.parser = parser
         self.request_obj = request_obj
+        self.response_obj = response_obj
         self.storage = storage
-
-        self.first_time: bool = True
 
     def connection_made(self, transport: TCPTransport) -> None:
         self.transport = transport
-        self.request_obj.set_http_callback(transport.write)
+        # I really don't know why it says that uvloop.loopTCPTransport
+        # doesn't have write() method, so one more noqa in the codebase
+        self.request_obj.set_http_callback(transport.write)  # noqa
 
     def data_received(self, data: bytes) -> None:
         self.parser.feed_data(data)
 
         if self.protocol.received:
             asyncio.create_task(
-                self.on_message_complete(self.request_obj)
+                self.on_message_complete(self.request_obj, self.response_obj)
             )
             self.protocol.__init__(
                 self.request_obj
@@ -77,8 +90,9 @@ class AioHTTPServer(base.HTTPServer):
     def __init__(self,
                  sock: socket.socket,
                  max_conns: int,
-                 on_message_complete: Coroutine,
+                 on_message_complete: AsyncFunction,
                  storage: Storage,
+                 default_headers: dict,
                  **kwargs):
         sock.listen(max_conns)
 
@@ -86,13 +100,15 @@ class AioHTTPServer(base.HTTPServer):
         self.on_message_complete = on_message_complete
         self.storage = storage
         self.server: Optional[asyncio.AbstractServer] = None
+        self.default_headers = default_headers
 
     async def poll(self):
         loop = asyncio.get_running_loop()
         server = await loop.create_server(
             lambda: server_protocol_factory(
                 self.on_message_complete,
-                self.storage
+                self.storage,
+                self.default_headers
             ),
             sock=self.sock,
             start_serving=False
