@@ -18,7 +18,7 @@ from httptools import HttpRequestParser
 from . import base
 from ..storage.base import Storage
 from ..typehints import AsyncFunction
-from ..entities import Request, Response
+from ..entities import Request, Response, CaseInsensitiveDict
 from ..parser.httptools_protocol import Protocol as LLHttpProtocol
 
 install_uvloop()
@@ -27,7 +27,7 @@ install_uvloop()
 def server_protocol_factory(
         on_message_complete: AsyncFunction,
         storage: Storage,
-        default_headers: dict
+        default_headers: CaseInsensitiveDict
 ) -> 'AsyncioServerProtocol':
     request_obj = Request(
         lambda data: 'will be set later',
@@ -66,16 +66,20 @@ class AsyncioServerProtocol(asyncio.Protocol):
 
     def connection_made(self, transport: TCPTransport) -> None:
         self.transport = transport
-        # I really don't know why it says that uvloop.loopTCPTransport
-        # doesn't have write() method, so one more noqa in the codebase
-        self.request_obj.set_http_callback(transport.write)  # noqa
 
     def data_received(self, data: bytes) -> None:
         self.parser.feed_data(data)
 
         if self.protocol.received:
             asyncio.create_task(
-                self.on_message_complete(self.request_obj, self.response_obj)
+                # I really don't know why linter thinks that TCPTransport doesn't provide `write()` method
+                # but I haven't tried this without uvloop, so don't know whether this will work for
+                # vanilla asyncio transport
+                self.on_message_complete(
+                    self.request_obj,
+                    self.response_obj,
+                    self.transport.write    # noqa
+                )
             )
             self.protocol.__init__(
                 self.request_obj
@@ -92,7 +96,7 @@ class AioHTTPServer(base.HTTPServer):
                  max_conns: int,
                  on_message_complete: AsyncFunction,
                  storage: Storage,
-                 default_headers: dict,
+                 default_headers: CaseInsensitiveDict,
                  **kwargs):
         sock.listen(max_conns)
 
