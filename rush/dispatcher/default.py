@@ -1,6 +1,8 @@
+import warnings
 from functools import reduce
+from traceback import format_exc
 from asyncio import iscoroutinefunction
-from typing import (Dict, Callable, Awaitable, Union, Iterable, List, Optional)
+from typing import (Dict, Callable, Awaitable, Union, Type, Iterable, List, Optional)
 
 from .. import exceptions
 from .base import BaseDispatcher
@@ -72,6 +74,11 @@ class AsyncDispatcher(BaseDispatcher):
             method: None for method in HTTP_METHODS
         }
 
+        # a dict with exceptions and handlers of the exceptions
+        self.error_handlers: Dict[Type[Exception], Callable[[Request, Response, Exception], Awaitable]] = {}
+        # and this is the list of the errors that are handling
+        self.handling_errors = ()
+
     async def process_request(self,
                               request: Request,
                               response: Response,
@@ -81,28 +88,22 @@ class AsyncDispatcher(BaseDispatcher):
             handler = self.any_paths_handlers[request.method]
 
             if handler is None:
-                raise exceptions.HTTPNotFound(request, msg='no-registered-routers')
+                http_send(await self._handle_exception(request, response,
+                                                       exceptions.HTTPNotFound(request, msg='no-registered-routers')))
+                return
         else:
             handler = self.usual_handlers[request.path]
 
-        if handler.middlewares:
-            result = await handler.get_performed_middleware(request, response)
-        else:
-            result = await handler.handler(request, response)
+        try:
+            if handler.middlewares:
+                result = await handler.get_performed_middleware(request, response)
+            else:
+                result = await handler.handler(request, response)
+        except Exception as exc:
+            http_send(await self._handle_exception(request, response, exc))
+            return
 
-        http_send(
-            render_http_response(
-                protocol=b'1.1',
-                code=result.code,
-                status_code=result.status,
-                headers=result.headers if result.headers is not None else result.default_headers,
-                body=result.body,
-                # TODO: this shouldn't be always True, will be updated after chunked transfer
-                #       will be implemented
-                count_content_length=True
-            )
-        )
-
+        http_send(self._render_response(result))
         request.wipe()
 
     def route(self,
@@ -173,6 +174,55 @@ class AsyncDispatcher(BaseDispatcher):
             any_path=not route.path,
             middlewares=route.middlewares
         ))
+
+    def handle_error(self, error: Type[Exception]):
+        if error not in self.handling_errors:
+            self.handling_errors += error
+
+        def deco(coro: AsyncFunction):
+            self.error_handlers[error] = coro
+
+            return coro
+
+        return deco
+
+    @staticmethod
+    def _render_response(response: Response) -> bytes:
+        return render_http_response(
+            protocol=b'1.1',
+            code=response.code,
+            status_code=response.status,
+            headers=response.headers,
+            body=response.body,
+            # TODO: this option shouldn't be always True, so after native chunked transfer
+            #       will be implemented this flag will become optional
+            count_content_length=True
+        )
+
+    async def _handle_exception(self, request: Request, response: Response, exc: Exception) -> bytes:
+        if not isinstance(exc, self.handling_errors):
+            return render_http_response(
+                    protocol=b'1.1',
+                    code=500,
+                    status_code=b'Internal Server Error',
+                    headers=b'content-type: text/html\r\ncontent-length: 33',
+                    body=b'<h1>500 Internal Server Error</h1>'
+            )
+
+        try:
+            result: Response = await self.error_handlers[exc.__class__](request, response, exc)
+        except Exception:
+            warnings.warn(f'an exception occurred in exceptions handler:\n{format_exc()}')
+
+            return render_http_response(
+                    protocol=b'1.1',
+                    code=500,
+                    status_code=None,
+                    headers=b'content-type: text/html\r\ncontent-length: 33',
+                    body=b'<h1>500 Internal Server Error</h1>'
+            )
+
+        return self._render_response(result)
 
     def _put_handler(self, handler: Handler) -> None:
         if handler.any_path:
