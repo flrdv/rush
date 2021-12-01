@@ -1,6 +1,6 @@
 from typing import Awaitable
 
-from rush import webserver
+from rush import webserver, exceptions
 from rush.entities import Request, Response
 from rush.middlewares.base import BaseMiddleware
 from rush.dispatcher.default import AsyncDispatcher, Route
@@ -57,6 +57,16 @@ async def echo_req_body_handler(request: Request, response: Response) -> Respons
     return response(
         code=200,
         body=request.body
+    )
+
+
+@dp.handle_error(exceptions.HTTPNotFound)
+async def handle_error(request: Request,
+                       response: Response,
+                       exception: exceptions.HTTPBadRequest) -> Response:
+    return response(
+        code=404,
+        body=b'<h1 align="center">Oops... We cannot find content you are searching for :(</h1>'
     )
 
 
