@@ -18,8 +18,8 @@ def format_headers(headers: dict):
 
 def render_http_response(protocol: bytes,
                          code: int,
-                         status_code: Optional[str],
-                         headers: dict,
+                         status_code: Optional[bytes],
+                         headers: Union[dict, bytes],
                          body: bytes,
                          count_content_length: bool = False):
     """
