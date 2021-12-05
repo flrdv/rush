@@ -4,19 +4,24 @@ import logging
 import asyncio
 import platform
 import multiprocessing
-from signal import SIGKILL
 from traceback import format_exc
 from dataclasses import dataclass, field
 from typing import List, Type, Union, Optional
 
 from .utils import sockutils
 from .server.base import HTTPServer
+from .utils.termutils import is_windows
 from .entities import CaseInsensitiveDict
 from .dispatcher.base import BaseDispatcher
 from .server.aiohttpserver import AioHTTPServer
 from .storage import (base as storage_base,
                       fd_sendfile as storage_fd_sendfile)
 
+
+try:
+    from signal import SIGKILL
+except ImportError:
+    from signal import CTRL_C_EVENT as SIGKILL
 
 logging.basicConfig(
     format='[%(asctime)s] [%(levelname)s] %(name)s: %(message)s'
@@ -99,7 +104,7 @@ class WebServer:
         Returns multiprocessing.cpu_count() - 1 if raw_count is None or <0
         """
 
-        if platform.system() == 'Windows':
+        if is_windows():
             if raw_count not in (0, 1):
                 self.logger.info('running under windows: reuseport is '
                                  'not available; disabling forks')
@@ -132,7 +137,11 @@ class WebServer:
         self.logger.disabled = not self._is_parent()
 
         sock = socket.socket()
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, True)
+
+        if not is_windows():
+            # as I said before, windows does not support reuseport
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, True)
+
         self.logger.debug(f'trying to bind on {self.settings.host}:{self.settings.port}...')
 
         succeeded, retries_went = sockutils.bind_sock(
