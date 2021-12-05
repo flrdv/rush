@@ -30,6 +30,10 @@ def set_max_descriptors(value=None):
         return get_max_descriptors()
 
 
+def is_windows():
+    return system() == 'Windows'
+
+
 def is_linux():
     return system() == 'Linux'
 
