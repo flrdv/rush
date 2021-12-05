@@ -168,15 +168,16 @@ class WebServer:
             raise SystemExit(1)
 
         if self._is_parent():
-            self.logger.info(f'successfully bound socket on {self.settings.host}:{self.settings.port}')
+            host, port = self.settings.host, self.settings.port
+            self.logger.info(f'successfully bound socket on {host}:{port}')
             self.logger.info('press CTRL-C to stop the server')
 
         http_server = self.settings.httpserver(
-            sock,
-            self.settings.max_connections,
-            dp.process_request,
-            self.settings.storage(),
-            self.settings.default_headers
+            sock=sock,
+            max_conns=self.settings.max_connections,
+            on_message_complete=dp.process_request,
+            storage=self.settings.storage(),
+            default_headers=self.settings.default_headers
         )
 
         while True:
@@ -188,7 +189,6 @@ class WebServer:
                     self.logger.info('shutting down (aborted by user)...')
                     self._kill_children()
                     http_server.stop()
-
                     break
                 else:
                     self.logger.info(f'child pid={os.getpid()} received KeyboardInterrupt; '
