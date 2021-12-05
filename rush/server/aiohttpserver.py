@@ -3,23 +3,25 @@ import asyncio
 import warnings
 from typing import Optional
 
+from httptools import HttpRequestParser
+
 try:
     from uvloop import install as install_uvloop
     from uvloop.loop import TCPTransport
 except ImportError as exc:
     from asyncio.transports import BaseTransport as TCPTransport
 
+    warnings.warn(f'failed to apply uvloop: {exc}')
+
     def install_uvloop():
-        warnings.warn(f'failed to apply uvloop ({exc}), performance will be decreased')
-
-
-from httptools import HttpRequestParser
+        pass
 
 from . import base
 from ..storage.base import Storage
 from ..typehints import AsyncFunction
 from ..entities import Request, Response, CaseInsensitiveDict
 from ..parser.httptools_protocol import Protocol as LLHttpProtocol
+
 
 install_uvloop()
 
