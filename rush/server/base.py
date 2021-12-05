@@ -1,7 +1,30 @@
 import abc
+import socket
+
+from ..storage.base import Storage
+from ..typehints import AsyncFunction
+from ..entities import CaseInsensitiveDict
 
 
 class HTTPServer(abc.ABC):
+    """
+    Base class for HTTP server implementation
+
+    Includes implementation of __init__ method, and abstract poll(), stop()
+    """
+
+    def __init__(self,
+                 sock: socket.socket,
+                 max_conns: int,
+                 on_message_complete: AsyncFunction,
+                 storage: Storage,
+                 default_headers: CaseInsensitiveDict):
+        self.sock = sock
+        self.max_conns = max_conns
+        self.on_message_complete = on_message_complete
+        self.storage = storage
+        self.default_headers = default_headers
+
     @abc.abstractmethod
     async def poll(self) -> None:
         """
