@@ -177,7 +177,7 @@ class AsyncDispatcher(BaseDispatcher):
 
     def handle_error(self, error: Type[Exception]):
         if error not in self.handling_errors:
-            self.handling_errors += error
+            self.handling_errors += (error,)
 
         def deco(coro: AsyncFunction):
             self.error_handlers[error] = coro
