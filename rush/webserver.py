@@ -89,24 +89,26 @@ class WebServer:
 
         self._server_worker(dp)
 
-    @staticmethod
-    def _get_children_count(raw_count: Optional[int]) -> int:
+    def _get_children_count(self, raw_count: Optional[int]) -> int:
         """
         Returns a count of children has to be spawned
 
         Returns 0 if Windows (as reuseport isn't available under windows)
         Returns raw_count if raw_count is bigger than 1
         Returns 0 if raw_count is 1
-        Returns multiprocessing.cpu_count() - 1 if raw_count is None
+        Returns multiprocessing.cpu_count() - 1 if raw_count is None or <0
         """
 
         if platform.system() == 'Windows':
+            if raw_count not in (0, 1):
+                self.logger.info('running under windows: reuseport is '
+                                 'not available; disabling forks')
             return 0
 
-        if raw_count is None:
+        if raw_count is None or raw_count < 0:
             return multiprocessing.cpu_count() - 1
 
-        return raw_count - 1
+        return raw_count - 1 if raw_count > 0 else 0
 
     def _do_forks(self, n: int) -> Optional[List[int]]:
         spawned_children = []
