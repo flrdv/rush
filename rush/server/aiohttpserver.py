@@ -96,15 +96,17 @@ class AioHTTPServer(base.HTTPServer):
                  max_conns: int,
                  on_message_complete: AsyncFunction,
                  storage: Storage,
-                 default_headers: CaseInsensitiveDict,
-                 **kwargs):
-        sock.listen(max_conns)
+                 default_headers: CaseInsensitiveDict):
+        super(AioHTTPServer, self).__init__(
+            sock=sock,
+            max_conns=max_conns,
+            on_message_complete=on_message_complete,
+            storage=storage,
+            default_headers=default_headers
+        )
 
-        self.sock = sock
-        self.on_message_complete = on_message_complete
-        self.storage = storage
         self.server: Optional[asyncio.AbstractServer] = None
-        self.default_headers = default_headers
+        sock.listen(max_conns)
 
     async def poll(self):
         loop = asyncio.get_running_loop()
