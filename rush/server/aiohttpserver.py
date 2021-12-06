@@ -72,8 +72,9 @@ class AsyncioServerProtocol(asyncio.Protocol):
 
         if self.protocol.received:
             asyncio.create_task(
-                # I really don't know why linter thinks that TCPTransport doesn't provide `write()` method
-                # but I haven't tried this without uvloop, so don't know whether this will work for
+                # I really don't know why linter thinks that TCPTransport
+                # doesn't provide `write()` method but I haven't tried this
+                # without uvloop, so don't know whether this will work for
                 # vanilla asyncio transport
                 self.on_message_complete(
                     self.request_obj,
