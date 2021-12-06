@@ -1,4 +1,5 @@
 import os
+import resource
 import socket
 import logging
 import asyncio
@@ -10,7 +11,7 @@ from typing import List, Type, Union, Optional
 from .utils import sockutils
 from .typehints import Logger
 from .server.base import HTTPServer
-from .utils.termutils import is_windows
+from .utils.osdetector import is_windows
 from .entities import CaseInsensitiveDict
 from .dispatcher.base import BaseDispatcher
 from .server.aiohttpserver import AioHTTPServer
@@ -176,9 +177,11 @@ class WebServer:
             # don't like lambdas
             on_begin_serving = lambda: 'ok'  # noqa
 
+        max_conns = self._set_max_descriptors(self.settings.max_connections)
+
         http_server = self.settings.httpserver(
             sock=sock,
-            max_conns=self.settings.max_connections,
+            max_conns=max_conns,
             on_begin_serving=on_begin_serving,
             on_message_complete=dp.process_request,
             storage=self.settings.storage(),
@@ -208,6 +211,24 @@ class WebServer:
                                     'environment, and, if it\'s possible, a sample of code to '
                                     'reproduce an error')
                 self.logger.info('continuing the job')
+
+    @staticmethod
+    def _set_max_descriptors(expected: int) -> int:
+        """
+        Receives expected value, returns actual value (guaranteed less than hard limit)
+        """
+
+        soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+
+        if expected <= soft:
+            return soft
+
+        if expected >= hard:
+            expected = hard - 1
+
+        # I don't know whether (expected, expected) is allowed
+        # so made soft limit a bit less than hard
+        resource.setrlimit(resource.RLIMIT_NOFILE, (expected, hard))
 
     def _is_parent(self) -> bool:
         """
