@@ -2,13 +2,13 @@ import os
 import socket
 import logging
 import asyncio
-import platform
 import multiprocessing
 from traceback import format_exc
 from dataclasses import dataclass, field
 from typing import List, Type, Union, Optional
 
 from .utils import sockutils
+from .typehints import Logger
 from .server.base import HTTPServer
 from .utils.termutils import is_windows
 from .entities import CaseInsensitiveDict
@@ -44,7 +44,7 @@ class Settings:
         )
     )
 
-    logger: logging.Logger = field(default_factory=logging.getLogger)
+    logger: Logger = field(default_factory=logging.getLogger)
 
     storage: Type[storage_base.Storage] = field(default=storage_fd_sendfile.SimpleDevStorage)
     httpserver: Type[HTTPServer] = field(default=AioHTTPServer)
