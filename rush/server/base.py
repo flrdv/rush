@@ -1,5 +1,6 @@
 import abc
 import socket
+from typing import Callable
 
 from ..storage.base import Storage
 from ..typehints import AsyncFunction
@@ -16,11 +17,13 @@ class HTTPServer(abc.ABC):
     def __init__(self,
                  sock: socket.socket,
                  max_conns: int,
+                 on_begin_serving: Callable,
                  on_message_complete: AsyncFunction,
                  storage: Storage,
                  default_headers: CaseInsensitiveDict):
         self.sock = sock
         self.max_conns = max_conns
+        self.on_begin_serving = on_begin_serving
         self.on_message_complete = on_message_complete
         self.storage = storage
         self.default_headers = default_headers
