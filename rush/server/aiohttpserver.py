@@ -1,7 +1,7 @@
 import socket
 import asyncio
 import warnings
-from typing import Optional
+from typing import Optional, Callable
 
 from httptools import HttpRequestParser
 
@@ -95,12 +95,14 @@ class AioHTTPServer(base.HTTPServer):
     def __init__(self,
                  sock: socket.socket,
                  max_conns: int,
+                 on_begin_serving: Callable,
                  on_message_complete: AsyncFunction,
                  storage: Storage,
                  default_headers: CaseInsensitiveDict):
         super(AioHTTPServer, self).__init__(
             sock=sock,
             max_conns=max_conns,
+            on_begin_serving=on_begin_serving,
             on_message_complete=on_message_complete,
             storage=storage,
             default_headers=default_headers
@@ -121,6 +123,7 @@ class AioHTTPServer(base.HTTPServer):
             start_serving=False
         )
         self.server = server
+        self.on_begin_serving()
 
         await server.serve_forever()
 
