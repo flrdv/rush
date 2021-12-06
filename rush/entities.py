@@ -65,30 +65,7 @@ class CaseInsensitiveDict(dict):
         return CaseInsensitiveDict(self.items())
 
 
-class ContextDict(dict):
-    """
-    Context dict is just an abstraction to allow usage of dict without
-    explicit __getitem__ and __setitem__. It means you can get (and set)
-    values just by typing like:
-        >>> ctx_dict = ContextDict()
-        >>> ctx_dict.variable = 'some value'
-        >>> ctx_dict.variable
-        'some value'
-
-    Thanks to t.me/entressi for this snippet (the fastest solution I got from him)
-    """
-
-    def __init__(self, *args, **kwargs):
-        super(ContextDict, self).__init__(*args, **kwargs)
-        self.__dict__ = self
-
-
 class Request:
-    # Purpose of context in request is only for exchanging some data between
-    # middlewares and handlers without a lot of shitcode like django does
-    # Values from this context are changing only in handlers or middlewares
-    ctx: ContextDict = ContextDict()
-
     def __init__(self, storage: Storage):
         self.storage = storage
 
@@ -103,6 +80,11 @@ class Request:
         self.protocol: Optional[str] = None
         self.headers = None
         self.body: bytes = b''
+
+        # Purpose of context in request is only for exchanging some data between
+        # middlewares and handlers without a lot of shitcode like django does
+        # Values from this context are changing only in handlers or middlewares
+        self.ctx: dict = {}
 
         self.socket: Optional[Connection] = None
         self._on_chunk: Optional[Callable] = None
@@ -185,9 +167,6 @@ class Response:
         self.status: Optional[str] = None
         self.headers: CaseInsensitiveDict = default_headers.copy()
         self.body: Optional[bytes] = None
-
-    def add_body(self, body: Union[str, bytes]):
-        self.body += body if isinstance(body, bytes) else body.encode()
 
     def wipe(self):
         self.code = 200
