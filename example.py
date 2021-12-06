@@ -8,8 +8,11 @@ from rush.dispatcher.default import AsyncDispatcher, Route
 
 dp = AsyncDispatcher()
 app = webserver.WebServer()
+
+logging.basicConfig(
+    level=logging.INFO
+)
 logger = logging.getLogger('example')
-logger.setLevel(logging.INFO)
 
 
 class MyGlobalMiddleware(BaseMiddleware):
