@@ -22,6 +22,28 @@ PRE_RENDERED_INTERNAL_ERROR_RESPONSE = render_http_response(
 )
 
 
+def collapse_middlewares(middlewares: List[BaseMiddleware],
+                         handler: Awaitable,
+                         request: Request) -> Awaitable:
+    """
+    Takes a list of middlewares and a handler, and returns single coroutine
+    that is just a chain of nested calls of next middleware (or handler in
+    the end)
+    """
+
+    # TODO: benchmark, what is faster: given variant below,
+    #       or making the last middleware already with handler,
+    #       and collapse all them only after that
+    return reduce(
+        lambda prev, next_: next_.process(prev, request),
+        # all the middlewares `process()` method requires handler
+        # but endpoint handler doesn't. So we just put endpoint handler
+        # as the first element in the list of middlewares so we don't need
+        # to pass any arguments to it. Ez solution, but ugly for linters
+        [handler] + middlewares  # noqa
+    )
+
+
 class Handler:
     """
     A class that describes handler. Keeps it routing path,
@@ -40,16 +62,13 @@ class Handler:
         self.any_path = any_path
         self.middlewares = middlewares or []
 
-    def get_performed_middleware(self,
-                                 request: Request,
-                                 response: Response) -> Awaitable:
-        return reduce(
-            lambda prev, next_: next_.process(prev, request),
-            # all the middlewares `process()` method requires handler
-            # but endpoint handler doesn't. So we just put endpoint handler
-            # as the first element in the list of middlewares so we don't need
-            # to pass any arguments to it. Ez solution, but ugly for linters
-            [self.handler(request, response)] + self.middlewares  # noqa
+    def get_wrapped_handler(self,
+                            request: Request,
+                            response: Response) -> Awaitable:
+        return collapse_middlewares(
+            middlewares=self.middlewares,
+            handler=self.handler(request, response),
+            request=request
         )
 
 
@@ -91,6 +110,21 @@ class AsyncDispatcher(BaseDispatcher):
         self.error_handlers: Dict[Type[Exception], ErrorHandler] = {}
         # and this is the list of the errors that are handling
         self.handling_errors = ()
+        self.global_middlewares: List[BaseMiddleware] = []
+
+    def on_begin_serving(self):
+        """
+        Implicitly insert global middlewares to the list of middlewares
+        of all the handlers. Inserting to the beginning as it is tenable
+        for global middlewares to be first who will process the request
+        """
+
+        for handler in self.usual_handlers.values():
+            self._apply_middlewares(handler, self.global_middlewares)
+
+        for handler in self.any_paths_handlers.values():
+            if handler is not None:
+                self._apply_middlewares(handler, self.global_middlewares)
 
     async def process_request(self,
                               request: Request,
@@ -114,7 +148,7 @@ class AsyncDispatcher(BaseDispatcher):
 
         try:
             if handler.middlewares:
-                result = await handler.get_performed_middleware(request, response)
+                result = await handler.get_wrapped_handler(request, response)
             else:
                 result = await handler.handler(request, response)
         except Exception as exc:
@@ -214,6 +248,13 @@ class AsyncDispatcher(BaseDispatcher):
 
         return deco
 
+    def add_global_middleware(self, middleware: BaseMiddleware):
+        self.global_middlewares.append(middleware)
+
+    def add_global_middlewares(self, *middlewares: BaseMiddleware):
+        for middleware in middlewares:
+            self.add_global_middleware(middleware)
+
     async def _handle_exception(self,
                                 request: Request,
                                 response: Response,
@@ -239,6 +280,10 @@ class AsyncDispatcher(BaseDispatcher):
             body=result.body,
             count_content_length=True
         )
+
+    @staticmethod
+    def _apply_middlewares(handler: Handler, middlewares: List[BaseMiddleware]):
+        handler.middlewares.extend(middlewares)
 
     def _put_handler(self, handler: Handler) -> None:
         if handler.any_path:
