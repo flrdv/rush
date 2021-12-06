@@ -110,6 +110,8 @@ def generate_chunked_data(fd: BinaryIO, chunk_length: int = 4096):
 def parse_params(params: bytes) -> Dict[str, List[str]]:
     """
     Returns dict with params (empty if no params given)
+
+    May raise exceptions: ValueError
     """
 
     pairs: Dict[str, List] = {}
