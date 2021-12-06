@@ -9,15 +9,6 @@ dp = AsyncDispatcher()
 app = webserver.WebServer()
 
 
-class MyMiddleware(BaseMiddleware):
-    async def process(self, handler: Awaitable, request: Request) -> Response:
-        request.ctx.hello = 'hello, world!'
-        response = await handler
-        response.add_body(f'\nHandler said: {request.ctx["from_handler"]}')
-
-        return response
-
-
 @dp.get('/')
 async def deco_handler(request: Request, response: Response) -> Response:
     return response(
@@ -36,8 +27,17 @@ async def awaiting_demo(request: Request, response: Response) -> Response:
     )
 
 
+class MyMiddleware(BaseMiddleware):
+    async def process(self, handler: Awaitable, request: Request) -> Response:
+        request.ctx['hello'] = 'hello, world!'
+        response = await handler
+        response.body += f'\nHandler said: {request.ctx["from_handler"]}'.encode()
+
+        return response
+
+
 async def middleware_example(request: Request, response: Response) -> Response:
-    request.ctx.from_handler = 'with love'
+    request.ctx['from_handler'] = 'with love'
 
     return response(
         body=f'Middleware said: {request.ctx["hello"]}'
