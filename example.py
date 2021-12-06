@@ -1,3 +1,4 @@
+import logging
 from typing import Awaitable
 
 from rush import webserver, exceptions
@@ -7,6 +8,16 @@ from rush.dispatcher.default import AsyncDispatcher, Route
 
 dp = AsyncDispatcher()
 app = webserver.WebServer()
+logger = logging.getLogger('example')
+logger.setLevel(logging.INFO)
+
+
+class MyGlobalMiddleware(BaseMiddleware):
+    async def process(self,
+                      handler: Awaitable,
+                      request: Request) -> Response:
+        logger.info('I am a global middleware!')
+        return await handler
 
 
 @dp.get('/')
@@ -29,6 +40,7 @@ async def awaiting_demo(request: Request, response: Response) -> Response:
 
 class MyMiddleware(BaseMiddleware):
     async def process(self, handler: Awaitable, request: Request) -> Response:
+        logger.info('I am a usual middleware!')
         request.ctx['hello'] = 'hello, world!'
         response = await handler
         response.body += f'\nHandler said: {request.ctx["from_handler"]}'.encode()
@@ -70,6 +82,9 @@ async def handle_error(request: Request,
     )
 
 
+dp.add_global_middleware(
+    MyGlobalMiddleware()
+)
 dp.add_routes([
     Route(echo_req_body_handler, '/echo', 'GET'),
     Route(middleware_example, '/middlewares', 'GET',
