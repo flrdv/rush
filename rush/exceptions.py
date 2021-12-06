@@ -1,3 +1,6 @@
+from typing import Optional
+
+
 class WebServerError(Exception):
     pass
 
@@ -12,6 +15,11 @@ class HandlerMustBeCoroutineError(WebServerError):
 
 class NoMethodsProvided(WebServerError):
     pass
+
+
+class InvalidFormBodyError(WebServerError):
+    def __init__(self, body: Optional[bytes, str] = None):
+        self.body = body
 
 
 class HTTPError(Exception):
