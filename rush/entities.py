@@ -1,8 +1,9 @@
 import asyncio
 from typing import Union, Any, Dict, List, Callable, Awaitable, Optional
 
-from .storage.base import Storage
+from . import exceptions
 from .typehints import Connection
+from .storage.base import Storage
 from .utils.httputils import parse_params
 
 
@@ -77,6 +78,7 @@ class Request:
         self.fragment: Optional[bytes] = None
         self.raw_parameters: Optional[bytes] = None
         self.parsed_parameters: Optional[Dict[str, List[str]]] = None
+        self.parsed_form: Optional[Dict[str, List[str]]] = None
         self.protocol: Optional[str] = None
         self.headers = None
         self.body: bytes = b''
@@ -135,7 +137,7 @@ class Request:
     def get_on_complete(self) -> Callable[[], Awaitable]:
         return self._on_complete
 
-    async def params(self) -> Dict[str, List[str]]:
+    def params(self) -> Dict[str, List[str]]:
         """
         Returns a dict with URI parameters, where keys are bytes
         and values are lists with bytes. This may be not convenient
@@ -146,12 +148,33 @@ class Request:
         be parsed
 
         If no parameters provided, empty dictionary will be returned
+        If parameters are invalid, empty dictionary will be returned (this behaviour
+        may be changed in future)
         """
 
         if not self.parsed_parameters:
-            self.parsed_parameters = parse_params(self.raw_parameters)
+            try:
+                self.parsed_parameters = parse_params(self.raw_parameters)
+            except ValueError:
+                self.parsed_parameters = {}
 
         return self.parsed_parameters
+
+    def form(self) -> Dict[str, List[str]]:
+        """
+        Returns the same dict as request.params(), but parses request body instead
+
+        If request body is not valid parameters string, exceptions.InvalidFormBodyError
+        will be raised
+        """
+
+        if self.parsed_form is None:
+            try:
+                self.parsed_form = parse_params(self.body)
+            except ValueError:
+                raise exceptions.InvalidFormBodyError(body=self.body)
+
+        return self.parsed_form
 
 
 class Response:
