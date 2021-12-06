@@ -197,32 +197,41 @@ class AsyncDispatcher(BaseDispatcher):
 
         return deco
 
-    def get(self, path: RoutePath):
-        return self.route(path, 'GET')
+    def get(self, path: RoutePath,
+            middlewares: Optional[List[BaseMiddleware]] = None):
+        return self.route(path, 'GET', middlewares=middlewares)
 
-    def post(self, path: RoutePath):
-        return self.route(path, 'POST')
+    def post(self, path: RoutePath,
+             middlewares: Optional[List[BaseMiddleware]] = None):
+        return self.route(path, 'POST', middlewares=middlewares)
 
-    def head(self, path: RoutePath):
-        return self.route(path, 'HEAD')
+    def head(self, path: RoutePath,
+             middlewares: Optional[List[BaseMiddleware]] = None):
+        return self.route(path, 'HEAD', middlewares=middlewares)
 
-    def put(self, path: RoutePath):
-        return self.route(path, 'PUT')
+    def put(self, path: RoutePath,
+            middlewares: Optional[List[BaseMiddleware]] = None):
+        return self.route(path, 'PUT', middlewares=middlewares)
 
-    def trace(self, path: RoutePath):
-        return self.route(path, 'TRACE')
+    def trace(self, path: RoutePath,
+              middlewares: Optional[List[BaseMiddleware]] = None):
+        return self.route(path, 'TRACE', middlewares=middlewares)
 
-    def connect(self, path: RoutePath):
-        return self.route(path, 'CONNECT')
+    def connect(self, path: RoutePath,
+                middlewares: Optional[List[BaseMiddleware]] = None):
+        return self.route(path, 'CONNECT', middlewares=middlewares)
 
-    def delete(self, path: RoutePath):
-        return self.route(path, 'DELETE')
+    def delete(self, path: RoutePath,
+               middlewares: Optional[List[BaseMiddleware]] = None):
+        return self.route(path, 'DELETE', middlewares=middlewares)
 
-    def options(self, path: RoutePath):
-        return self.route(path, 'OPTIONS')
+    def options(self, path: RoutePath,
+                middlewares: Optional[List[BaseMiddleware]] = None):
+        return self.route(path, 'OPTIONS', middlewares=middlewares)
 
-    def patch(self, path: RoutePath):
-        return self.route(path, 'PATCH')
+    def patch(self, path: RoutePath,
+              middlewares: Optional[List[BaseMiddleware]] = None):
+        return self.route(path, 'PATCH', middlewares=middlewares)
 
     def add_routes(self, routes: Iterable[Route]):
         for route in routes:
