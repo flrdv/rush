@@ -9,6 +9,15 @@ class BaseDispatcher(abc.ABC):
     A base class to be inherited of for all the dispatchers implementations
     """
 
+    def on_begin_serving(self):
+        """
+        Just a callback after server starts working. May be useful
+        in cases when something needs to be processed after initialization
+        phase will be finished
+
+        This method is optional
+        """
+
     @abc.abstractmethod
     async def process_request(self,
                               request: Request,
