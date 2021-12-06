@@ -23,10 +23,6 @@ try:
 except ImportError:
     from signal import CTRL_C_EVENT as SIGKILL
 
-logging.basicConfig(
-    format='[%(asctime)s] [%(levelname)s] %(name)s: %(message)s'
-)
-
 
 @dataclass
 class Settings:
@@ -172,9 +168,18 @@ class WebServer:
             self.logger.info(f'successfully bound socket on {host}:{port}')
             self.logger.info('press CTRL-C to stop the server')
 
+        if hasattr(dp, 'on_begin_serving'):
+            on_begin_serving = dp.on_begin_serving
+        else:
+            # pycharm, stop doing shit here. I know, okay?
+            # I won't define a function here just because you
+            # don't like lambdas
+            on_begin_serving = lambda: 'ok'  # noqa
+
         http_server = self.settings.httpserver(
             sock=sock,
             max_conns=self.settings.max_connections,
+            on_begin_serving=on_begin_serving,
             on_message_complete=dp.process_request,
             storage=self.settings.storage(),
             default_headers=self.settings.default_headers
