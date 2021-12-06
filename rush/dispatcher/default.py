@@ -1,6 +1,6 @@
-import warnings
+import logging
+import traceback
 from functools import reduce
-from traceback import format_exc
 from asyncio import iscoroutinefunction
 from typing import (Dict, Callable, Awaitable, Union, Type, Iterable, List, Optional)
 
@@ -9,8 +9,17 @@ from .base import BaseDispatcher
 from ..entities import Request, Response
 from ..middlewares.base import BaseMiddleware
 from ..utils.stringutils import make_sure_bytes_or_none
-from ..typehints import RoutePath, AsyncFunction, HTTPMethod
 from ..utils.httputils import HTTP_METHODS, render_http_response
+from ..typehints import RoutePath, AsyncFunction, HTTPMethod, Logger
+
+ErrorHandler = Callable[[Request, Response, Exception], Awaitable[Response]]
+PRE_RENDERED_INTERNAL_ERROR_RESPONSE = render_http_response(
+    protocol=b'1.1',
+    code=500,
+    status_code=b'500 Internal Server Error',
+    headers=b'content-type: text/html\r\ncontent-length: 33',
+    body=b'<h1>500 Internal Server Error</h1>'
+)
 
 
 class Handler:
@@ -24,8 +33,7 @@ class Handler:
                  path: RoutePath,
                  methods: Iterable[bytes],
                  any_path: bool,
-                 middlewares: List[BaseMiddleware]
-                 ):
+                 middlewares: List[BaseMiddleware]):
         self.handler = handler
         self.path = path
         self.methods = methods
@@ -68,28 +76,38 @@ class Route:
 
 
 class AsyncDispatcher(BaseDispatcher):
-    def __init__(self):
+    def __init__(self, logger: Logger = None):
+        if logger is None:
+            self.logger = logging.getLogger()
+        else:
+            self.logger = logger
+
         self.usual_handlers: Dict[bytes, Handler] = {}
         self.any_paths_handlers: Dict[HTTPMethod, Handler] = {
             method: None for method in HTTP_METHODS
         }
 
         # a dict with exceptions and handlers of the exceptions
-        self.error_handlers: Dict[Type[Exception], Callable[[Request, Response, Exception], Awaitable]] = {}
+        self.error_handlers: Dict[Type[Exception], ErrorHandler] = {}
         # and this is the list of the errors that are handling
         self.handling_errors = ()
 
     async def process_request(self,
                               request: Request,
                               response: Response,
-                              http_send: Callable[[bytes], None]
-                              ) -> None:
+                              http_send: Callable[[bytes], None]) -> None:
         if request.path not in self.usual_handlers:
             handler = self.any_paths_handlers[request.method]
 
             if handler is None:
-                http_send(await self._handle_exception(request, response,
-                                                       exceptions.HTTPNotFound(request, msg='no-registered-routers')))
+                http_send(
+                    await self._handle_exception(
+                        request, response,
+                        exceptions.HTTPNotFound(request, msg='no-registered-routers')
+                    )
+                )
+                request.wipe()
+
                 return
         else:
             handler = self.usual_handlers[request.path]
@@ -102,17 +120,27 @@ class AsyncDispatcher(BaseDispatcher):
         except Exception as exc:
             http_send(await self._handle_exception(request, response, exc))
             return
+        finally:
+            request.wipe()
 
-        http_send(self._render_response(result))
-        request.wipe()
+        http_send(
+            render_http_response(
+                protocol=b'1.1',
+                code=result.code,
+                status_code=result.status,
+                headers=result.headers,
+                body=result.body,
+                # TODO: this option shouldn't be always True, so after native chunked transfer
+                #       will be implemented this flag will become optional
+                count_content_length=True
+            )
+        )
 
     def route(self,
               path: RoutePath,
               method: Union[str, bytes, None] = None,
               methods: Iterable[HTTPMethod] = HTTP_METHODS,
-              middlewares: Optional[List[BaseMiddleware]] = None
-              ):
-
+              middlewares: Optional[List[BaseMiddleware]] = None):
         if method is not None:
             methods = {make_sure_bytes_or_none(method.upper())}
 
@@ -186,43 +214,31 @@ class AsyncDispatcher(BaseDispatcher):
 
         return deco
 
-    @staticmethod
-    def _render_response(response: Response) -> bytes:
-        return render_http_response(
-            protocol=b'1.1',
-            code=response.code,
-            status_code=response.status,
-            headers=response.headers,
-            body=response.body,
-            # TODO: this option shouldn't be always True, so after native chunked transfer
-            #       will be implemented this flag will become optional
-            count_content_length=True
-        )
-
-    async def _handle_exception(self, request: Request, response: Response, exc: Exception) -> bytes:
+    async def _handle_exception(self,
+                                request: Request,
+                                response: Response,
+                                exc: Exception) -> bytes:
         if not isinstance(exc, self.handling_errors):
-            return render_http_response(
-                    protocol=b'1.1',
-                    code=500,
-                    status_code=b'Internal Server Error',
-                    headers=b'content-type: text/html\r\ncontent-length: 33',
-                    body=b'<h1>500 Internal Server Error</h1>'
-            )
+            self.logger.exception(traceback.format_exc())
+
+            return PRE_RENDERED_INTERNAL_ERROR_RESPONSE
 
         try:
-            result: Response = await self.error_handlers[exc.__class__](request, response, exc)
-        except Exception:
-            warnings.warn(f'an exception occurred in exceptions handler:\n{format_exc()}')
+            result = await self.error_handlers[exc.__class__](request, response, exc)
+        except Exception:   # noqa: I really need to catch all the ordinary exceptions here
+            self.logger.exception(f'an exception occurred in exceptions '
+                                  f'handler:\n{traceback.format_exc()}')
 
-            return render_http_response(
-                    protocol=b'1.1',
-                    code=500,
-                    status_code=None,
-                    headers=b'content-type: text/html\r\ncontent-length: 33',
-                    body=b'<h1>500 Internal Server Error</h1>'
-            )
+            return PRE_RENDERED_INTERNAL_ERROR_RESPONSE
 
-        return self._render_response(result)
+        return render_http_response(
+            protocol=b'1.1',
+            code=result.code,
+            status_code=result.status,
+            headers=result.headers,
+            body=result.body,
+            count_content_length=True
+        )
 
     def _put_handler(self, handler: Handler) -> None:
         if handler.any_path:
@@ -231,7 +247,5 @@ class AsyncDispatcher(BaseDispatcher):
             self.usual_handlers[handler.path] = handler
 
     def _add_any_path_handler(self, handler: Handler) -> None:
-        assert handler.any_path, TypeError('expected any path handler, got usual handler instead')
-
         for method in handler.methods:
             self.any_paths_handlers[method] = handler
