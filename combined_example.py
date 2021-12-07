@@ -75,6 +75,10 @@ async def echo_req_body_handler(request: Request, response: Response) -> Respons
     )
 
 
+async def especial_unhandled_exception(request: Request, response: Response) -> Response:
+    raise TypeError('some type error here')
+
+
 @dp.handle_error(exceptions.HTTPNotFound)
 async def handle_error(request: Request,
                        response: Response,
@@ -90,6 +94,7 @@ dp.add_global_middleware(
 )
 dp.add_routes([
     Route(echo_req_body_handler, '/echo', 'GET'),
+    Route(especial_unhandled_exception, '/unhandled-exception', 'GET'),
     Route(middleware_example, '/middlewares', 'GET',
           middlewares=[
               MyMiddleware()
