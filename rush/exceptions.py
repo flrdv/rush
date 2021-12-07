@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Union
 
 
 class WebServerError(Exception):
@@ -18,7 +18,7 @@ class NoMethodsProvided(WebServerError):
 
 
 class InvalidFormBodyError(WebServerError):
-    def __init__(self, body: Optional[bytes, str] = None):
+    def __init__(self, body: Optional[Union[bytes, str]] = None):
         self.body = body
 
 
