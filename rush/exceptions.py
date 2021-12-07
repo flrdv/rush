@@ -23,6 +23,9 @@ class InvalidFormBodyError(WebServerError):
 
 
 class HTTPError(Exception):
+    code = 000  # child class must re-define it
+    description = b'No Description Provided'
+
     def __init__(self,
                  request,
                  **kwargs):
