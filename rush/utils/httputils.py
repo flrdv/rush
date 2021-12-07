@@ -60,15 +60,15 @@ def render_http_response(protocol: bytes,
 
 
 def render_http_request(method: bytes,
-                        path: str,
-                        protocol: str,
+                        path: bytes,
+                        protocol: bytes,
                         headers: dict,
                         body: Union[bytes, str],
                         chunked: bool = False):
     if not chunked and 'content-length' not in headers:
         headers['content-length'] = len(body)
 
-    return b'%s %s HTTP/%s\r\n%s\r\n\r\n%s' % (method, path.encode(), protocol.encode(),
+    return b'%s %s HTTP/%s\r\n%s\r\n\r\n%s' % (method, path, protocol,
                                                '\r\n'.join(f'{key}: {value}'
                                                            for key, value in headers.items()).encode(),
                                                body.encode() if isinstance(body, str) else body)
