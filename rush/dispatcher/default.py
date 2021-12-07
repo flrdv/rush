@@ -1,4 +1,5 @@
 import logging
+import sys
 import traceback
 from functools import reduce
 from asyncio import iscoroutinefunction
@@ -134,13 +135,23 @@ class AsyncDispatcher(BaseDispatcher):
             handler = self.any_paths_handlers[request.method]
 
             if handler is None:
-                http_send(
-                    await self._handle_exception(
-                        request, response,
-                        exceptions.HTTPNotFound(request, msg='no-registered-routers')
+                if exceptions.HTTPNotFound in self.handling_errors:
+                    rendered_response = await self._run_exception_handler(
+                        exc_handler=self.error_handlers[exceptions.HTTPNotFound],
+                        request=request,
+                        response=response,
+                        exception=exceptions.HTTPNotFound(
+                            request,
+                            msg='no handlers attached for the request'
+                        )
                     )
-                )
+                else:
+                    rendered_response = PRE_RENDERED_INTERNAL_ERROR_RESPONSE
+                    self.logger.warning(f'{request.path.decode()}: no handlers attached')
+
+                http_send(rendered_response)
                 request.wipe()
+                response.wipe()
 
                 return
         else:
@@ -153,6 +164,8 @@ class AsyncDispatcher(BaseDispatcher):
                 result = await handler.handler(request, response)
         except Exception as exc:
             http_send(await self._handle_exception(request, response, exc))
+            response.wipe()
+
             return
         finally:
             request.wipe()
@@ -169,6 +182,8 @@ class AsyncDispatcher(BaseDispatcher):
                 count_content_length=True
             )
         )
+
+        response.wipe()
 
     def route(self,
               path: RoutePath,
@@ -269,15 +284,26 @@ class AsyncDispatcher(BaseDispatcher):
                                 response: Response,
                                 exc: Exception) -> bytes:
         if not isinstance(exc, self.handling_errors):
-            self.logger.exception(traceback.format_exc())
+            self.logger.exception('no error handlers registered for exception:')
 
             return PRE_RENDERED_INTERNAL_ERROR_RESPONSE
 
+        return await self._run_exception_handler(
+            exc_handler=self.error_handlers[exc.__class__],
+            request=request,
+            response=response,
+            exception=exc
+        )
+
+    async def _run_exception_handler(self,
+                                     exc_handler: ErrorHandler,
+                                     request: Request,
+                                     response: Response,
+                                     exception: Exception):
         try:
-            result = await self.error_handlers[exc.__class__](request, response, exc)
-        except Exception:   # noqa: I really need to catch all the ordinary exceptions here
-            self.logger.exception(f'an exception occurred in exceptions '
-                                  f'handler:\n{traceback.format_exc()}')
+            result = await exc_handler(request, response, exception)
+        except Exception:   # noqa: again I need to catch all the exceptions here
+            self.logger.exception('uncaught exception in error handler:')
 
             return PRE_RENDERED_INTERNAL_ERROR_RESPONSE
 
