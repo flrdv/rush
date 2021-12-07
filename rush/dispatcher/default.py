@@ -17,9 +17,16 @@ ErrorHandler = Callable[[Request, Response, Exception], Awaitable[Response]]
 PRE_RENDERED_INTERNAL_ERROR_RESPONSE = render_http_response(
     protocol=b'1.1',
     code=500,
-    status_code=b'500 Internal Server Error',
+    status_code=b'Internal Server Error',
     headers=b'content-type: text/html\r\ncontent-length: 33',
     body=b'<h1>500 Internal Server Error</h1>'
+)
+PRE_RENDERED_NOT_FOUND = render_http_response(
+    protocol=b'1.1',
+    code=404,
+    status_code=b'Not Found',
+    headers=b'content-type: text/html\r\ncontent-length: 22',
+    body=b'<h1>404 Not Found</h1>'
 )
 
 
@@ -109,8 +116,7 @@ class AsyncDispatcher(BaseDispatcher):
 
         # a dict with exceptions and handlers of the exceptions
         self.error_handlers: Dict[Type[Exception], ErrorHandler] = {}
-        # and this is the list of the errors that are handling
-        self.handling_errors = ()
+
         self.global_middlewares: List[BaseMiddleware] = []
 
     def on_begin_serving(self):
@@ -135,9 +141,11 @@ class AsyncDispatcher(BaseDispatcher):
             handler = self.any_paths_handlers[request.method]
 
             if handler is None:
-                if exceptions.HTTPNotFound in self.handling_errors:
+                err_handler = self._get_error_handler(exceptions.HTTPNotFound)
+
+                if err_handler is not None:
                     rendered_response = await self._run_exception_handler(
-                        exc_handler=self.error_handlers[exceptions.HTTPNotFound],
+                        exc_handler=err_handler,
                         request=request,
                         response=response,
                         exception=exceptions.HTTPNotFound(
@@ -262,9 +270,6 @@ class AsyncDispatcher(BaseDispatcher):
         ))
 
     def handle_error(self, error: Type[Exception]):
-        if error not in self.handling_errors:
-            self.handling_errors += (error,)
-
         def deco(coro: AsyncFunction):
             self.error_handlers[error] = coro
 
@@ -283,17 +288,39 @@ class AsyncDispatcher(BaseDispatcher):
                                 request: Request,
                                 response: Response,
                                 exc: Exception) -> bytes:
-        if not isinstance(exc, self.handling_errors):
+        err_handler = self._get_error_handler(exc.__class__)
+
+        if err_handler is None:
+            if isinstance(exc, exceptions.HTTPError):
+                # if no handlers attached, but as we have HTTPError,
+                # we can show the default error page to user
+
+                return render_http_response(
+                    protocol=request.protocol.encode(),
+                    code=exc.code,
+                    status_code=exc.description,
+                    headers=response.default_headers,
+                    body=b'<h1>%d %s</h1>' % (exc.code, exc.description),
+                    count_content_length=True
+                )
+
             self.logger.exception('no error handlers registered for exception:')
 
             return PRE_RENDERED_INTERNAL_ERROR_RESPONSE
 
         return await self._run_exception_handler(
-            exc_handler=self.error_handlers[exc.__class__],
+            exc_handler=err_handler,
             request=request,
             response=response,
             exception=exc
         )
+
+    def _get_error_handler(self, exc_class: Type[Exception]) -> Optional[ErrorHandler]:
+        for exception_class in exc_class.mro():
+            if exception_class in self.error_handlers:
+                # idk why linter is yelling, as exc_class is always an exception,
+                # he is always a subclass of Exception, subclass of subclass of Exception, etc.
+                return self.error_handlers[exception_class]  # noqa
 
     async def _run_exception_handler(self,
                                      exc_handler: ErrorHandler,
@@ -302,6 +329,16 @@ class AsyncDispatcher(BaseDispatcher):
                                      exception: Exception):
         try:
             result = await exc_handler(request, response, exception)
+        except exceptions.HTTPError as exc:
+            request = exc.request
+
+            return render_http_response(
+                protocol=request.protocol,
+                code=exc.code,
+                status_code=exc.description,
+                headers=response.default_headers,
+                body=b'<h1>%d %s</h1>' % (exc.code, exc.description)
+            )
         except Exception:   # noqa: again I need to catch all the exceptions here
             self.logger.exception('uncaught exception in error handler:')
 
