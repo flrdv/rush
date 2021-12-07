@@ -1,5 +1,4 @@
 import os
-import resource
 import socket
 import logging
 import asyncio
@@ -87,7 +86,7 @@ class WebServer:
         self._children = self._do_forks(n=children_count)
 
         if self._children is not None:
-            self.logger.info('children has been spawned')
+            self.logger.debug('children has been spawned')
 
         self._server_worker(dp)
 
@@ -96,15 +95,15 @@ class WebServer:
         Returns a count of children has to be spawned
 
         Returns 0 if Windows (as reuseport isn't available under windows)
-        Returns raw_count if raw_count is bigger than 1
+        Returns raw_count if raw_count >1
         Returns 0 if raw_count is 1
         Returns multiprocessing.cpu_count() - 1 if raw_count is None or <0
         """
 
         if is_windows():
             if raw_count not in (0, 1):
-                self.logger.info('running under windows: reuseport is '
-                                 'not available; disabling forks')
+                self.logger.warning('running under windows: reuseport is '
+                                    'not available; disabling forks')
             return 0
 
         if raw_count is None or raw_count < 0:
@@ -202,9 +201,8 @@ class WebServer:
                     self.logger.info(f'child pid={os.getpid()} received KeyboardInterrupt; '
                                      f'continuing the job, server can be stopped only from '
                                      f'parent process')
-            except Exception as exc:
-                self.logger.exception(f'an error occurred while running http server: {exc}\n'
-                                      f'Detailed trace:\n{format_exc()}')
+            except Exception:   # noqa: here I also really need to catch all the exceptions
+                self.logger.exception(f'an error occurred while running http server:')
                 self.logger.warning('most of all, this is a bug; please, open an issue on '
                                     'https://github.com/floordiv/rush/issues with detailed '
                                     'description of the case, web-server version, traceback, '
@@ -216,7 +214,14 @@ class WebServer:
     def _set_max_descriptors(expected: int) -> int:
         """
         Receives expected value, returns actual value (guaranteed less than hard limit)
+
+        If windows, returns expected value without additional operations
         """
+
+        if is_windows():
+            return expected
+
+        import resource
 
         soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
 
