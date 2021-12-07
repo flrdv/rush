@@ -4,7 +4,7 @@ from typing import Union, Any, Dict, List, Callable, Awaitable, Optional
 from . import exceptions
 from .typehints import Connection
 from .storage.base import Storage
-from .utils.httputils import parse_params
+from .utils.httputils import parse_params, render_http_request
 
 
 def make_async(func: Callable) -> Callable[[Any], Awaitable]:
@@ -152,7 +152,9 @@ class Request:
         may be changed in future)
         """
 
-        if not self.parsed_parameters:
+        if self.raw_parameters is None:
+            self.parsed_parameters = {}
+        elif not self.parsed_parameters:
             try:
                 self.parsed_parameters = parse_params(self.raw_parameters)
             except ValueError:
@@ -175,6 +177,15 @@ class Request:
                 raise exceptions.InvalidFormBodyError(body=self.body)
 
         return self.parsed_form
+
+    def __str__(self):
+        return render_http_request(
+            method=self.method,
+            path=self.path,
+            protocol=self.protocol.encode(),
+            headers=self.headers,
+            body=self.body
+        )
 
 
 class Response:
