@@ -8,9 +8,6 @@ HTTP_METHODS = {b'GET', b'HEAD', b'POST', b'PUT',
                 b'TRACE', b'PATCH'}
 HEX_TO_BYTE = {(a + b).encode(): bytes.fromhex(a + b)
                for a in hexdigits for b in hexdigits}
-HTTP_METHODS = {b'GET', b'HEAD', b'POST', b'PUT',
-                b'DELETE', b'CONNECT', b'OPTIONS',
-                b'TRACE', b'PATCH'}
 
 
 def format_headers(headers: dict):
