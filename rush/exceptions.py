@@ -1,3 +1,6 @@
+from typing import Optional, Union
+
+
 class WebServerError(Exception):
     pass
 
@@ -14,12 +17,22 @@ class NoMethodsProvided(WebServerError):
     pass
 
 
+class InvalidFormBodyError(WebServerError):
+    def __init__(self, body: Optional[Union[bytes, str]] = None):
+        self.body = body
+
+
 class HTTPError(Exception):
+    code = 000  # child class must re-define it
+    description = b'No Description Provided'
+
     def __init__(self,
                  request,
                  **kwargs):
         self.request = request
 
+        # an additional stash for dynamic values
+        # not very good choice, but may be useful in some cases
         for key, value in kwargs.items():
             setattr(self, key, value)
 

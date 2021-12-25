@@ -12,16 +12,19 @@ from ..typehints import Path, Connection, HttpResponseCallback
 
 
 class Storage(abc.ABC):
+    @abc.abstractmethod
     def add_file(self, path: Path) -> None:
         """
         Add file by it's path
         """
 
+    @abc.abstractmethod
     def remove_file(self, path: Path) -> None:
         """
         Remove file by it's path
         """
 
+    @abc.abstractmethod
     def send_file(self,
                   path: Path,
                   conn: Connection,

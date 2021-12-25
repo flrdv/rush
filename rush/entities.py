@@ -1,10 +1,10 @@
 import asyncio
 from typing import Union, Any, Dict, List, Callable, Awaitable, Optional
 
-from . import storage
-from .utils.status_codes import status_codes
-from .utils.httputils import render_http_response, parse_params
-from .typehints import (HttpResponseCallback, Connection)
+from . import exceptions
+from .typehints import Connection
+from .storage.base import Storage
+from .utils.httputils import parse_params, render_http_request
 
 
 def make_async(func: Callable) -> Callable[[Any], Awaitable]:
@@ -62,36 +62,13 @@ class CaseInsensitiveDict(dict):
             **kwargs
         )
 
-
-class ContextDict(dict):
-    """
-    Context dict is just an abstraction to allow usage of dict without
-    explicit __getitem__ and __setitem__. It means you can get (and set)
-    values just by typing like:
-        >>> ctx_dict = ContextDict()
-        >>> ctx_dict.variable = 'some value'
-        >>> ctx_dict.variable
-        'some value'
-
-    Thanks to t.me/entressi for this snippet (the fastest solution I got from him)
-    """
-
-    def __init__(self, *args, **kwargs):
-        super(ContextDict, self).__init__(*args, **kwargs)
-        self.__dict__ = self
+    def copy(self) -> 'CaseInsensitiveDict':
+        return CaseInsensitiveDict(self.items())
 
 
 class Request:
-    # Purpose of context in request is only for exchanging some data between
-    # middlewares and handlers without a lot of shitcode like django does
-    # Values from this context are changing only in handlers or middlewares
-    ctx: ContextDict = ContextDict()
-
-    def __init__(self,
-                 http_callback: HttpResponseCallback,
-                 cache: storage.base.Storage):
-        self.http_callback = http_callback
-        self.cache = cache
+    def __init__(self, storage: Storage):
+        self.storage = storage
 
         # not using Union cause every object's fields after initializing
         # ALWAYS will be refilled, but also I'd like to have proper
@@ -101,15 +78,21 @@ class Request:
         self.fragment: Optional[bytes] = None
         self.raw_parameters: Optional[bytes] = None
         self.parsed_parameters: Optional[Dict[str, List[str]]] = None
+        self.parsed_form: Optional[Dict[str, List[str]]] = None
         self.protocol: Optional[str] = None
         self.headers = None
         self.body: bytes = b''
+
+        # Purpose of context in request is only for exchanging some data between
+        # middlewares and handlers without a lot of shitcode like django does
+        # Values from this context are changing only in handlers or middlewares
+        self.ctx: dict = {}
 
         self.socket: Optional[Connection] = None
         self._on_chunk: Optional[Callable] = None
         self._on_complete: Optional[Callable] = None
 
-    async def wipe(self):
+    def wipe(self):
         """
         A method that clears path, body and headers attributes
         The purpose of this function is not to let already processed
@@ -154,31 +137,7 @@ class Request:
     def get_on_complete(self) -> Callable[[], Awaitable]:
         return self._on_complete
 
-    def set_http_callback(self, callback: Callable[[bytes], Callable]):
-        self.http_callback = callback
-
-    def response(self,
-                 code: int = 200,
-                 status: Union[str, bytes, None] = None,
-                 body: Union[str, bytes] = b'',
-                 headers: Union[dict, CaseInsensitiveDict, None] = None
-                 ) -> None:
-        self.http_callback(
-            render_http_response(
-                self.protocol,
-                code,
-                status or status_codes[code],
-                headers,
-                body
-            )
-        )
-
-    def raw_response(self,
-                     data: bytes
-                     ) -> None:
-        self.http_callback(data)
-
-    async def params(self) -> Dict[str, List[str]]:
+    def params(self) -> Dict[str, List[str]]:
         """
         Returns a dict with URI parameters, where keys are bytes
         and values are lists with bytes. This may be not convenient
@@ -189,9 +148,77 @@ class Request:
         be parsed
 
         If no parameters provided, empty dictionary will be returned
+        If parameters are invalid, empty dictionary will be returned (this behaviour
+        may be changed in future)
         """
 
-        if not self.parsed_parameters:
-            self.parsed_parameters = parse_params(self.raw_parameters)
+        if self.raw_parameters is None:
+            self.parsed_parameters = {}
+        elif not self.parsed_parameters:
+            try:
+                self.parsed_parameters = parse_params(self.raw_parameters)
+            except ValueError:
+                self.parsed_parameters = {}
 
         return self.parsed_parameters
+
+    def form(self) -> Dict[str, List[str]]:
+        """
+        Returns the same dict as request.params(), but parses request body instead
+
+        If request body is not valid parameters string, exceptions.InvalidFormBodyError
+        will be raised
+        """
+
+        if self.parsed_form is None:
+            try:
+                self.parsed_form = parse_params(self.body)
+            except ValueError:
+                raise exceptions.InvalidFormBodyError(body=self.body)
+
+        return self.parsed_form
+
+    def __str__(self):
+        return render_http_request(
+            method=self.method,
+            path=self.path,
+            protocol=self.protocol.encode(),
+            headers=self.headers,
+            body=self.body
+        ).decode()
+
+
+class Response:
+    """
+    Response class is just a storage
+    The actual response will happen after it will be returned
+    """
+
+    def __init__(self, default_headers: CaseInsensitiveDict):
+        self.default_headers = default_headers
+
+        self.code: int = 200
+        self.status: Optional[str] = None
+        self.headers: CaseInsensitiveDict = default_headers.copy()
+        self.body: Optional[bytes] = None
+
+    def wipe(self):
+        self.code = 200
+        self.status = None
+        self.headers = self.default_headers.copy()
+        self.body = None
+
+    def __call__(self,
+                 code: int = 200,
+                 status: Optional[str] = None,
+                 headers: Optional[dict] = None,
+                 body: Union[bytes, str] = b''
+                 ):
+        self.code = code
+        self.status = status
+        self.body = body if isinstance(body, bytes) else body.encode()
+
+        if headers:
+            self.headers.update(headers)
+
+        return self

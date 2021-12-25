@@ -1,5 +1,5 @@
 from string import hexdigits
-from typing import Union, Tuple, Dict, List, BinaryIO
+from typing import Union, Optional, Dict, List, BinaryIO
 
 from .status_codes import status_codes
 
@@ -8,6 +8,9 @@ HTTP_METHODS = {b'GET', b'HEAD', b'POST', b'PUT',
                 b'TRACE', b'PATCH'}
 HEX_TO_BYTE = {(a + b).encode(): bytes.fromhex(a + b)
                for a in hexdigits for b in hexdigits}
+HTTP_METHODS = {b'GET', b'HEAD', b'POST', b'PUT',
+                b'DELETE', b'CONNECT', b'OPTIONS',
+                b'TRACE', b'PATCH'}
 
 
 def format_headers(headers: dict):
@@ -16,25 +19,37 @@ def format_headers(headers: dict):
         .encode()
 
 
-def render_http_response(protocol: str,
+def render_http_response(protocol: bytes,
                          code: int,
-                         status_code: Union[str, None],
-                         user_headers: Union[dict, None],
-                         body: Union[str, bytes],
-                         exclude_headers: Tuple[str] = (),
-                         count_content_length: bool = True):
-    # default headers
-    # TODO: add server-time header
-    headers = {
-        'server': 'rush',
-        'connection': 'keep-alive',
-        **(user_headers or {})
-    }
+                         status_code: Optional[bytes],
+                         headers: Union[dict, bytes],
+                         body: bytes,
+                         count_content_length: bool = False) -> bytes:
+    """
+    A function for rendering http responses. Uses C-formatting as the only way for
+    formatting byte-strings (f-strings with encoding are shit)
 
-    if count_content_length:
-        headers['content-length'] = len(body)
-    if exclude_headers:
-        set(map(headers.pop, exclude_headers))
+    Arguments:
+             protocol - protocol version, string in format `major.minor`,
+             code - response status code,
+             status_code - may be None, than it'll be taken from the list of known.
+                           If no known status codes relate to the status code, UNKNOWN
+                           will be used
+             headers - a dict (or CaseInsensitiveDict) with headers. May be bytes, than
+                       they won't be rendered
+             body - only bytes are accepted
+             count_content_length - disabled by default, but if enabled and headers aren't
+                                    already rendered, content-length header will be replaced
+                                    by len(body)
+    """
+
+    if not isinstance(headers, bytes):
+        if count_content_length:
+            headers['content-length'] = len(body)
+
+        headers = '\r\n'.join(
+            f'{key}: {value}' for key, value in headers.items()
+        ).encode()
 
     status_description = status_code or status_codes.get(code, 'UNKNOWN')
 
@@ -44,23 +59,19 @@ def render_http_response(protocol: str,
 
     # I'm not using format_headers() function here just to avoid useless calling
     # as everybody knows, functions' calls are a bit expensive in CPython
-    return b'HTTP/%s %d %s\r\n%s\r\n\r\n%s' % (protocol.encode(), code, status_description,
-                                               '\r\n'.join(f'{key}: {value}'
-                                                           for key, value in headers.items())
-                                               .encode(),
-                                               body if isinstance(body, bytes) else body.encode())
+    return b'HTTP/%s %d %s\r\n%s\r\n\r\n%s' % (protocol, code, status_description, headers, body)
 
 
 def render_http_request(method: bytes,
-                        path: str,
-                        protocol: str,
+                        path: bytes,
+                        protocol: bytes,
                         headers: dict,
                         body: Union[bytes, str],
-                        chunked: bool = False):
+                        chunked: bool = False) -> bytes:
     if not chunked and 'content-length' not in headers:
         headers['content-length'] = len(body)
 
-    return b'%s %s HTTP/%s\r\n%s\r\n\r\n%s' % (method, path.encode(), protocol.encode(),
+    return b'%s %s HTTP/%s\r\n%s\r\n\r\n%s' % (method, path, protocol,
                                                '\r\n'.join(f'{key}: {value}'
                                                            for key, value in headers.items()).encode(),
                                                body.encode() if isinstance(body, str) else body)
@@ -102,6 +113,8 @@ def generate_chunked_data(fd: BinaryIO, chunk_length: int = 4096):
 def parse_params(params: bytes) -> Dict[str, List[str]]:
     """
     Returns dict with params (empty if no params given)
+
+    May raise exceptions: ValueError
     """
 
     pairs: Dict[str, List] = {}
