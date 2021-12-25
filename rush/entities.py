@@ -185,7 +185,7 @@ class Request:
             protocol=self.protocol.encode(),
             headers=self.headers,
             body=self.body
-        )
+        ).decode()
 
 
 class Response:
