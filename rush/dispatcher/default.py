@@ -90,8 +90,7 @@ class Route:
                  handler: AsyncFunction,
                  path: RoutePath,
                  method_or_methods: Union[str, bytes, Iterable] = HTTP_METHODS,
-                 middlewares: Optional[List[BaseMiddleware]] = None
-                 ):
+                 middlewares: Optional[List[BaseMiddleware]] = None):
         self.handler = handler
         self.path = path if isinstance(path, bytes) else path.encode()
 
