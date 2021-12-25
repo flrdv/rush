@@ -158,9 +158,6 @@ class AsyncDispatcher(BaseDispatcher):
                     self.logger.warning(f'{request.path.decode()}: no handlers attached')
 
                 http_send(rendered_response)
-                request.wipe()
-                response.wipe()
-
                 return
         else:
             handler = self.usual_handlers[request.path]
@@ -172,26 +169,20 @@ class AsyncDispatcher(BaseDispatcher):
                 result = await handler.handler(request, response)
         except Exception as exc:
             http_send(await self._handle_exception(request, response, exc))
-            response.wipe()
-
             return
-        finally:
-            request.wipe()
 
         http_send(
             render_http_response(
                 protocol=b'1.1',
                 code=result.code,
-                status_code=result.status,
-                headers=result.headers,
-                body=result.body,
+                status_code=result.status,  # status can be None
+                headers=result.headers,     # but body can't, otherwise TypeError
+                body=result.body or b'',
                 # TODO: this option shouldn't be always True, so after native chunked transfer
                 #       will be implemented this flag will become optional
                 count_content_length=True
             )
         )
-
-        response.wipe()
 
     def route(self,
               path: RoutePath,
