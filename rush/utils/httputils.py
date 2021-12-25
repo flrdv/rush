@@ -21,7 +21,7 @@ def render_http_response(protocol: bytes,
                          status_code: Optional[bytes],
                          headers: Union[dict, bytes],
                          body: bytes,
-                         count_content_length: bool = False):
+                         count_content_length: bool = False) -> bytes:
     """
     A function for rendering http responses. Uses C-formatting as the only way for
     formatting byte-strings (f-strings with encoding are shit)
@@ -64,7 +64,7 @@ def render_http_request(method: bytes,
                         protocol: bytes,
                         headers: dict,
                         body: Union[bytes, str],
-                        chunked: bool = False):
+                        chunked: bool = False) -> bytes:
     if not chunked and 'content-length' not in headers:
         headers['content-length'] = len(body)
 
