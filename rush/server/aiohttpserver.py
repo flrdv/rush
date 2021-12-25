@@ -93,6 +93,7 @@ class AsyncioServerProtocol(asyncio.Protocol):
         # object. But we actually don't need it, as we anyway doesn't care,
         # it's client's problem
         asyncio.create_task(self.requests_queue.put(CLIENT_DISCONNECTED))
+        self.transport.close()
 
 
 class AioHTTPServer(base.HTTPServer):
