@@ -1,7 +1,7 @@
 import socket
 import asyncio
 import warnings
-from typing import Optional, Callable
+from typing import Optional, Callable, NoReturn
 
 from httptools import HttpRequestParser
 
@@ -24,6 +24,7 @@ from ..parser.httptools_protocol import Protocol as LLHttpProtocol
 
 
 install_uvloop()
+CLIENT_DISCONNECTED = 'constant for client runners tasks to stop themselves silently'
 
 
 def server_protocol_factory(
@@ -64,31 +65,34 @@ class AsyncioServerProtocol(asyncio.Protocol):
         self.response_obj = response_obj
         self.storage = storage
 
+        # TODO: add limit for pending requests count
+        # TODO: maybe move this to connection_made()?
+        self.requests_queue = asyncio.Queue()
+
     def connection_made(self, transport: TCPTransport) -> None:
         self.transport = transport
+        asyncio.create_task(client_runner(
+            requests_queue=self.requests_queue,
+            callback=self.on_message_complete,
+            parser=self.parser,
+            protocol=self.protocol,
+            # I really don't know why linter thinks that TCPTransport
+            # doesn't provide `write()` method but I haven't tried this
+            # without uvloop, so don't know whether this will work for
+            # vanilla asyncio transport
+            response_client=transport.write,  # noqa
+            request=self.request_obj,
+            response=self.response_obj
+        ))
 
     def data_received(self, data: bytes) -> None:
-        self.parser.feed_data(data)
+        asyncio.create_task(self.requests_queue.put(data))
 
-        if self.protocol.received:
-            asyncio.create_task(
-                # I really don't know why linter thinks that TCPTransport
-                # doesn't provide `write()` method but I haven't tried this
-                # without uvloop, so don't know whether this will work for
-                # vanilla asyncio transport
-                self.on_message_complete(
-                    self.request_obj,
-                    self.response_obj,
-                    self.transport.write    # noqa
-                )
-            )
-            self.protocol.__init__(
-                self.request_obj
-            )
-            self.parser.__init__(
-                self.protocol
-            )
-            self.protocol.parser = self.parser
+    def connection_lost(self, _) -> None:
+        # connection_lost callback receives one positional argument - Exception
+        # object. But we actually don't need it, as we anyway doesn't care,
+        # it's client's problem
+        asyncio.create_task(self.requests_queue.put(CLIENT_DISCONNECTED))
 
 
 class AioHTTPServer(base.HTTPServer):
@@ -129,3 +133,31 @@ class AioHTTPServer(base.HTTPServer):
 
     def stop(self):
         self.server.close()
+
+
+async def client_runner(requests_queue: asyncio.Queue,
+                        callback: AsyncFunction,
+                        parser: HttpRequestParser,
+                        protocol: LLHttpProtocol,
+                        response_client: Callable[[bytes], None],
+                        request: Request,
+                        response: Response) -> NoReturn:
+    while True:
+        data = await requests_queue.get()
+
+        if data == CLIENT_DISCONNECTED:
+            return
+
+        parser.feed_data(data)
+
+        if protocol.received:
+            await callback(
+                request,
+                response,
+                response_client
+            )
+            request.wipe()
+            response.wipe()
+            protocol.__init__(request)
+            parser.__init__(protocol)
+            protocol.parser = parser
