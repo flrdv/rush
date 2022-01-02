@@ -159,6 +159,3 @@ async def client_runner(requests_queue: asyncio.Queue,
             )
             request.wipe()
             response.wipe()
-            protocol.__init__(request)
-            parser.__init__(protocol)
-            protocol.parser = parser
