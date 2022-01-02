@@ -12,9 +12,7 @@ from ..entities import CaseInsensitiveDict
 class Protocol:
     REQUEST_HEADERS = CaseInsensitiveDict()
 
-    def __init__(self,
-                 request_obj: Request,
-                 ):
+    def __init__(self, request_obj: Request):
         self.request_obj = request_obj
 
         self.headers = self.REQUEST_HEADERS.copy()
@@ -27,6 +25,12 @@ class Protocol:
         self._on_complete: Optional[AsyncFunction[Nothing]] = None
 
         self.parser: Optional[HttpRequestParser] = None
+
+    def on_message_begin(self):
+        self.body = b''
+        self.file = False
+        self.headers = self.REQUEST_HEADERS.copy()
+        self.received = False
 
     def on_url(self, url: bytes):
         if b'%' in url:
@@ -71,3 +75,6 @@ class Protocol:
 
         if self._on_complete:
             asyncio.create_task(self._on_complete())
+            self._on_complete = None
+
+        self._on_chunk = None
