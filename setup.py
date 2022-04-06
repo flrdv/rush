@@ -1,4 +1,4 @@
-from os import listdir
+from os import listdir, path
 from setuptools import setup, find_packages
 
 with open("README.md", "r", encoding="utf8") as long_desc_fd:
@@ -11,8 +11,11 @@ requirements = []
 
 with open('requirements.txt', 'r') as requirements_fd:
     for requirement in requirements_fd:
+        # skip empty lines
+        requirement = requirement.strip()
+
         if requirement:
-            requirements.append(requirement.strip())
+            requirements.append(requirement)
 
 """
 IDK why, but this is the only way to add rush/defaultpages
@@ -25,27 +28,30 @@ nonpython_files_dirs = [
 nonpython_files = []
 
 for nonpython_files_dir in nonpython_files_dirs:
+    # just to make sure that it ends with a slash
     nonpython_files_dir = nonpython_files_dir.rstrip('/') + '/'
-    nonpython_files.extend(map(lambda file: nonpython_files_dir + file,
-                               listdir(nonpython_files_dir)))
+
+    for file in listdir(nonpython_files_dir):
+        if path.isfile(nonpython_files_dir + file):
+            nonpython_files.append(nonpython_files_dir + file)
 
 setup(
     name="rush",
     version=version,
-    author="floordiv",
-    description="Webserver that I'm trying to do as fast as fuck",
+    author="fakefloordiv",
+    description="Webserver that I'm trying to do as fast as fuck, but I failed",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/floordiv/rush",
+    url="https://github.com/fakefloordiv/rush",
     packages=find_packages(),
     include_package_data=True,
     data_files=[('', nonpython_files)],
     project_urls={
-        "Bug Tracker": "https://github.com/floordiv/rush/issues",
+        "Bug Tracker": "https://github.com/fakefloordiv/rush/issues",
     },
     classifiers=[
         "Programming Language :: Python :: 3",
-        "Operating System :: Linux only",
+        "Operating System :: Cross-platform",
     ],
     python_requires=">=3.6",
     install_requires=requirements
