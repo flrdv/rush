@@ -235,6 +235,8 @@ class WebServer:
         # so made soft limit a bit less than hard
         resource.setrlimit(resource.RLIMIT_NOFILE, (expected, hard))
 
+        return expected
+
     def _is_parent(self) -> bool:
         """
         Returns True or False, depending on fact whether we're in parent process
